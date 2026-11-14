@@ -11,60 +11,61 @@ declare global {
   }
 }
 
-const TOKEN = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
-
-// Mars locations
-const LOCATIONS = [
+const MARS_LOCATIONS = [
   {
     name: "Jezero Crater",
+    description: "Perseverance landing site",
     longitude: 77.58,
     latitude: 18.38,
-    description: "Perseverance rover landing site",
   },
   {
     name: "Gale Crater",
+    description: "Curiosity rover landing site",
     longitude: 137.8,
     latitude: -5.4,
-    description: "Curiosity rover exploration site",
   },
   {
     name: "Olympus Mons",
+    description: "Largest volcano in the Solar System",
     longitude: 226.2,
     latitude: 18.65,
-    description: "Largest known volcano in the Solar System",
   },
 ];
 
-type MarsLocation = (typeof LOCATIONS)[number];
+type MarsLocation = (typeof MARS_LOCATIONS)[number];
 
 export default function MarsGlobe() {
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewerRef = useRef<Cesium.Viewer | null>(null);
 
-  const [viewer, setViewer] = useState<Cesium.Viewer | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedLocation, setSelectedLocation] = useState<MarsLocation | null>(
+    null,
+  );
 
-  // Initialize Cesium
   useEffect(() => {
-    let cesiumViewer: Cesium.Viewer | undefined;
     let cancelled = false;
+    let viewer: Cesium.Viewer | undefined;
+    let tileset: Cesium.Cesium3DTileset | undefined;
 
     async function initializeMars() {
       try {
-        if (!TOKEN) {
-          throw new Error("Cesium ion token is missing.");
+        const token = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
+
+        if (!token) {
+          throw new Error(
+            "Cesium ion token is missing. Check your .env.local file.",
+          );
         }
 
+        if (!containerRef.current) return;
+
         window.CESIUM_BASE_URL = "/cesium/";
+        Cesium.Ion.defaultAccessToken = token;
 
-        Cesium.Ion.defaultAccessToken = TOKEN;
-        Cesium.Ellipsoid.default = Cesium.Ellipsoid.MARS;
-
-        if (!containerRef.current || cancelled) return;
-
-        // Create viewer
-        cesiumViewer = new Cesium.Viewer(containerRef.current, {
+        viewer = new Cesium.Viewer(containerRef.current, {
           globe: false,
           animation: false,
           timeline: false,
@@ -79,37 +80,41 @@ export default function MarsGlobe() {
           // selectionIndicator: false,
         });
 
-        setViewer(cesiumViewer);
+        viewerRef.current = viewer;
 
-        // Load Mars 3D Tiles
-        const mars = await Cesium.Cesium3DTileset.fromIonAssetId(3644333);
+        viewer.scene.backgroundColor =
+          Cesium.Color.fromCssColorString("#080b16");
 
-        if (cancelled) {
-          mars.destroy();
+        viewer.scene.screenSpaceCameraController.enableCollisionDetection = false;
+
+        // Load Mars terrain/3D tiles from Cesium ion.
+        // Verify that this asset ID is available to your ion account.
+        tileset = await Cesium.Cesium3DTileset.fromIonAssetId(3644333);
+
+        if (cancelled || viewer.isDestroyed()) {
+          tileset.destroy();
           return;
         }
 
-        cesiumViewer.scene.primitives.add(mars);
+        viewer.scene.primitives.add(tileset);
 
-        // Add location markers
-        LOCATIONS.forEach((location) => {
-          cesiumViewer!.entities.add({
+        // Add location markers.
+        MARS_LOCATIONS.forEach((location) => {
+          viewer!.entities.add({
             name: location.name,
-
             position: Cesium.Cartesian3.fromDegrees(
               location.longitude,
               location.latitude,
-              2000,
+              1000,
               Cesium.Ellipsoid.MARS,
             ),
-
             point: {
               pixelSize: 10,
-              color: Cesium.Color.ORANGE,
+              color: Cesium.Color.fromCssColorString("#ff7043"),
               outlineColor: Cesium.Color.WHITE,
               outlineWidth: 2,
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
-
             label: {
               text: location.name,
               font: "14px sans-serif",
@@ -117,13 +122,14 @@ export default function MarsGlobe() {
               outlineColor: Cesium.Color.BLACK,
               outlineWidth: 3,
               style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-              pixelOffset: new Cesium.Cartesian2(0, -20),
+              pixelOffset: new Cesium.Cartesian2(0, -22),
+              disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
           });
         });
 
-        // Initial camera position
-        await cesiumViewer.camera.flyTo({
+        // Initial camera position.
+        viewer.camera.flyTo({
           destination: Cesium.Cartesian3.fromDegrees(
             77.58,
             18.38,
@@ -132,11 +138,19 @@ export default function MarsGlobe() {
           ),
           duration: 2,
         });
-      } catch (err) {
-        console.error("Mars loading error:", err);
 
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load Mars.");
+          setError(null);
+        }
+      } catch (err) {
+        console.error("Mars initialization failed:", err);
+
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : "Something went wrong while loading Mars.",
+          );
         }
       } finally {
         if (!cancelled) {
@@ -149,41 +163,42 @@ export default function MarsGlobe() {
 
     return () => {
       cancelled = true;
-      cesiumViewer?.destroy();
-      setViewer(null);
+
+      if (viewer && !viewer.isDestroyed()) {
+        viewer.destroy();
+      }
+
+      viewerRef.current = null;
     };
   }, []);
 
-  // Camera navigation functions
+  // Camera controls
+  const zoomIn = () => {
+    viewerRef.current?.camera.zoomIn(200000);
+  };
 
-  function zoomIn() {
-    viewer?.camera.zoomIn(200000);
-  }
+  const zoomOut = () => {
+    viewerRef.current?.camera.zoomOut(200000);
+  };
 
-  function zoomOut() {
-    viewer?.camera.zoomOut(200000);
-  }
+  const rotateLeft = () => {
+    viewerRef.current?.camera.rotateLeft(0.2);
+  };
 
-  function rotateLeft() {
-    viewer?.camera.rotateLeft(0.2);
-  }
+  const rotateRight = () => {
+    viewerRef.current?.camera.rotateRight(0.2);
+  };
 
-  function rotateRight() {
-    viewer?.camera.rotateRight(0.2);
-  }
+  const rotateUp = () => {
+    viewerRef.current?.camera.rotateUp(0.1);
+  };
 
-  function tiltUp() {
-    viewer?.camera.rotateUp(0.1);
-  }
+  const rotateDown = () => {
+    viewerRef.current?.camera.rotateDown(0.1);
+  };
 
-  function tiltDown() {
-    viewer?.camera.rotateDown(0.1);
-  }
-
-  function resetCamera() {
-    if (!viewer) return;
-
-    viewer.camera.flyTo({
+  const resetCamera = () => {
+    viewerRef.current?.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
         77.58,
         18.38,
@@ -192,16 +207,14 @@ export default function MarsGlobe() {
       ),
       duration: 2,
     });
+  };
 
-    setSelectedLocation(null);
-  }
+  const flyToLocation = (location: MarsLocation) => {
+    const viewer = viewerRef.current;
 
-  // Navigate to a specific Mars location
-
-  function flyToLocation(location: MarsLocation) {
     if (!viewer) return;
 
-    setSelectedLocation(location.name);
+    setSelectedLocation(location);
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
@@ -212,161 +225,204 @@ export default function MarsGlobe() {
       ),
       duration: 2,
     });
-  }
+
+    setMenuOpen(false);
+  };
 
   return (
-    <div className="relative w-full h-screen overflow-hidden bg-black">
-      {/* Cesium viewer */}
-
+    <main className="relative h-screen w-full overflow-hidden bg-[#080b16] text-white">
+      {/* Cesium viewer: keep mounted even while loading */}
       <div ref={containerRef} className="absolute inset-0" />
 
-      {/* Loading */}
+      {/* Top-left header */}
+      <header className="absolute left-5 top-5 z-10">
+        <h1 className="text-2xl font-bold tracking-tight">
+          MARS<span className="text-orange-500">.</span>
+        </h1>
+        <p className="text-xs tracking-widest text-gray-400">
+          INTERPLANETARY SURVIVAL GUIDE
+        </p>
+      </header>
 
+      {/* Hamburger button */}
+      <button
+        type="button"
+        onClick={() => setMenuOpen((open) => !open)}
+        aria-label={menuOpen ? "Close menu" : "Open menu"}
+        aria-expanded={menuOpen}
+        className="absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#151a2a]/90 backdrop-blur-md transition hover:bg-orange-500"
+      >
+        <div className="flex w-5 flex-col gap-1.5">
+          <span
+            className={`h-0.5 w-full bg-white transition-all ${
+              menuOpen ? "translate-y-2 rotate-45" : ""
+            }`}
+          />
+          <span
+            className={`h-0.5 w-full bg-white transition-all ${
+              menuOpen ? "opacity-0" : ""
+            }`}
+          />
+          <span
+            className={`h-0.5 w-full bg-white transition-all ${
+              menuOpen ? "-translate-y-2 -rotate-45" : ""
+            }`}
+          />
+        </div>
+      </button>
+
+      {/* Menu backdrop */}
+      {menuOpen && (
+        <button
+          type="button"
+          aria-label="Close menu backdrop"
+          onClick={() => setMenuOpen(false)}
+          className="absolute inset-0 z-20 bg-black/40"
+        />
+      )}
+
+      {/* Hamburger drawer */}
+      <aside
+        className={`absolute right-0 top-0 z-20 h-full w-[320px] max-w-[85vw] border-l border-white/10 bg-[#101525]/95 p-6 pt-24 shadow-2xl backdrop-blur-xl transition-transform duration-300 ${
+          menuOpen ? "translate-x-0" : "translate-x-full"
+        }`}
+        aria-hidden={!menuOpen}
+      >
+        <div className="flex h-full flex-col gap-8 overflow-y-auto">
+          {/* Camera navigation */}
+          <section>
+            <h2 className="mb-4 text-xs font-semibold tracking-[0.2em] text-gray-400">
+              CAMERA CONTROLS
+            </h2>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div />
+              <ControlButton onClick={rotateUp} disabled={loading}>
+                ↑
+              </ControlButton>
+              <div />
+
+              <ControlButton onClick={rotateLeft} disabled={loading}>
+                ←
+              </ControlButton>
+              <ControlButton onClick={resetCamera} disabled={loading}>
+                <span className="text-lg">⌂</span>
+              </ControlButton>
+              <ControlButton onClick={rotateRight} disabled={loading}>
+                →
+              </ControlButton>
+
+              <div />
+              <ControlButton onClick={rotateDown} disabled={loading}>
+                ↓
+              </ControlButton>
+              <div />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <ControlButton onClick={zoomIn} disabled={loading}>
+                + Zoom in
+              </ControlButton>
+              <ControlButton onClick={zoomOut} disabled={loading}>
+                − Zoom out
+              </ControlButton>
+            </div>
+          </section>
+
+          {/* Locations */}
+          <section>
+            <h2 className="mb-4 text-xs font-semibold tracking-[0.2em] text-gray-400">
+              EXPLORE MARS
+            </h2>
+
+            <div className="space-y-2">
+              {MARS_LOCATIONS.map((location) => (
+                <button
+                  key={location.name}
+                  type="button"
+                  onClick={() => flyToLocation(location)}
+                  disabled={loading}
+                  className={`w-full rounded-xl border p-3 text-left transition ${
+                    selectedLocation?.name === location.name
+                      ? "border-orange-500 bg-orange-500/10"
+                      : "border-white/10 bg-white/5 hover:border-orange-500/50 hover:bg-white/10"
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+                >
+                  <div className="font-medium">{location.name}</div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {location.description}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <div className="mt-auto border-t border-white/10 pt-4">
+            <p className="text-xs text-gray-500">MARS EXPLORATION SYSTEM</p>
+            <p className="mt-1 text-xs text-gray-600">
+              Navigate the Martian surface.
+            </p>
+          </div>
+        </div>
+      </aside>
+
+      {/* Selected location information */}
+      {selectedLocation && (
+        <div className="absolute bottom-6 left-5 z-10 max-w-xs rounded-xl border border-white/10 bg-[#101525]/90 p-4 backdrop-blur-md">
+          <p className="text-xs font-semibold tracking-widest text-orange-400">
+            SELECTED LOCATION
+          </p>
+          <h2 className="mt-2 text-lg font-bold">{selectedLocation.name}</h2>
+          <p className="mt-1 text-sm text-gray-400">
+            {selectedLocation.description}
+          </p>
+          <p className="mt-3 text-xs text-gray-500">
+            {selectedLocation.latitude.toFixed(2)}° N/S,{" "}
+            {selectedLocation.longitude.toFixed(2)}° E/W
+          </p>
+        </div>
+      )}
+
+      {/* Loading overlay */}
       {loading && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black text-white">
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#080b16]">
           <div className="text-center">
-            <div className="text-2xl font-bold">Loading Mars...</div>
-            <p className="mt-2 text-sm text-gray-400">
-              Preparing planetary terrain
+            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-gray-700 border-t-orange-500" />
+            <p className="text-sm tracking-widest text-gray-300">
+              INITIALIZING MARS...
             </p>
           </div>
         </div>
       )}
 
-      {/* Error */}
-
-      {error && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/90 text-red-400">
-          <div className="max-w-md p-6 text-center">
-            <h2 className="text-xl font-bold">Failed to load Mars</h2>
-            <p className="mt-3 text-sm">{error}</p>
-          </div>
+      {/* Error overlay */}
+      {error && !loading && (
+        <div className="absolute inset-x-5 bottom-5 z-50 mx-auto max-w-lg rounded-xl border border-red-500/30 bg-[#25151b] p-4">
+          <p className="font-semibold text-red-400">Unable to load Mars</p>
+          <p className="mt-2 break-words text-sm text-gray-300">{error}</p>
         </div>
       )}
+    </main>
+  );
+}
 
-      {/* Header */}
-
-      <div className="absolute top-5 left-5 z-10 text-white">
-        <h1 className="text-2xl font-bold tracking-wider">MARS EXPLORER</h1>
-
-        <p className="text-xs text-gray-300 mt-1">
-          INTERPLANETARY SURVIVAL GUIDE
-        </p>
-      </div>
-
-      {/* Location sidebar */}
-
-      <div className="absolute top-24 left-5 z-10 w-64 rounded-xl border border-white/10 bg-black/70 p-4 text-white backdrop-blur-md">
-        <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider">
-          Explore locations
-        </h2>
-
-        <div className="space-y-2">
-          {LOCATIONS.map((location) => (
-            <button
-              key={location.name}
-              onClick={() => flyToLocation(location)}
-              disabled={!viewer}
-              className={`w-full rounded-lg p-3 text-left transition ${
-                selectedLocation === location.name
-                  ? "bg-orange-500/30 border border-orange-400"
-                  : "bg-white/5 hover:bg-white/10 border border-transparent"
-              }`}
-            >
-              <div className="font-medium text-sm">{location.name}</div>
-
-              <div className="mt-1 text-xs text-gray-400">
-                {location.description}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Navigation controls */}
-
-      <div className="absolute bottom-8 right-8 z-10 flex flex-col gap-2">
-        {/* Zoom */}
-
-        <button
-          onClick={zoomIn}
-          disabled={!viewer}
-          title="Zoom in"
-          className="h-11 w-11 rounded-lg bg-black/70 text-white text-xl backdrop-blur hover:bg-orange-500 disabled:opacity-40"
-        >
-          +
-        </button>
-
-        <button
-          onClick={zoomOut}
-          disabled={!viewer}
-          title="Zoom out"
-          className="h-11 w-11 rounded-lg bg-black/70 text-white text-xl backdrop-blur hover:bg-orange-500 disabled:opacity-40"
-        >
-          −
-        </button>
-
-        {/* Rotation */}
-
-        <button
-          onClick={rotateLeft}
-          disabled={!viewer}
-          title="Rotate left"
-          className="h-11 w-11 rounded-lg bg-black/70 text-white text-xl backdrop-blur hover:bg-orange-500 disabled:opacity-40"
-        >
-          ↶
-        </button>
-
-        <button
-          onClick={rotateRight}
-          disabled={!viewer}
-          title="Rotate right"
-          className="h-11 w-11 rounded-lg bg-black/70 text-white text-xl backdrop-blur hover:bg-orange-500 disabled:opacity-40"
-        >
-          ↷
-        </button>
-
-        {/* Tilt */}
-
-        <button
-          onClick={tiltUp}
-          disabled={!viewer}
-          title="Tilt up"
-          className="h-11 w-11 rounded-lg bg-black/70 text-white text-xl backdrop-blur hover:bg-orange-500 disabled:opacity-40"
-        >
-          ↑
-        </button>
-
-        <button
-          onClick={tiltDown}
-          disabled={!viewer}
-          title="Tilt down"
-          className="h-11 w-11 rounded-lg bg-black/70 text-white text-xl backdrop-blur hover:bg-orange-500 disabled:opacity-40"
-        >
-          ↓
-        </button>
-
-        {/* Reset */}
-
-        <button
-          onClick={resetCamera}
-          disabled={!viewer}
-          title="Reset camera"
-          className="h-11 w-11 rounded-lg bg-black/70 text-white text-xl backdrop-blur hover:bg-orange-500 disabled:opacity-40"
-        >
-          ⌂
-        </button>
-      </div>
-
-      {/* Selected location information */}
-
-      {selectedLocation && (
-        <div className="absolute bottom-8 left-5 z-10 rounded-lg border border-white/10 bg-black/70 p-4 text-white backdrop-blur-md">
-          <p className="text-xs text-gray-400">CURRENT LOCATION</p>
-
-          <h2 className="mt-1 font-semibold">{selectedLocation}</h2>
-        </div>
-      )}
-    </div>
+function ControlButton({
+  children,
+  onClick,
+  disabled = false,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="flex min-h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-sm transition hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      {children}
+    </button>
   );
 }
