@@ -68,15 +68,15 @@ export default function MarsGlobe() {
           globe: false,
           animation: false,
           timeline: false,
-          sceneModePicker: false,
-          baseLayerPicker: false,
+          // sceneModePicker: false,
+          // baseLayerPicker: false,
           geocoder: false,
           homeButton: false,
           navigationHelpButton: false,
           fullscreenButton: false,
           baseLayer: false,
           infoBox: false,
-          selectionIndicator: false,
+          // selectionIndicator: false,
         });
 
         setViewer(cesiumViewer);
@@ -108,7 +108,6 @@ export default function MarsGlobe() {
               color: Cesium.Color.ORANGE,
               outlineColor: Cesium.Color.WHITE,
               outlineWidth: 2,
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
 
             label: {
@@ -119,7 +118,6 @@ export default function MarsGlobe() {
               outlineWidth: 3,
               style: Cesium.LabelStyle.FILL_AND_OUTLINE,
               pixelOffset: new Cesium.Cartesian2(0, -20),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
           });
         });
