@@ -1,6 +1,7 @@
 "use client";
 
 import MarsDialogue from "./MarsDialogue";
+import MarsLoader from "./MarsLoader";
 import LocationDialogue from "./LocationDialogue";
 import { LOCATION_FACTS } from "./locationFacts";
 import { useEffect, useRef, useState } from "react";
@@ -16,6 +17,9 @@ declare global {
 }
 
 const MARS_RADIUS = 3_396_190;
+
+// Closest the camera may get to the real (tiled) surface, in metres.
+const MIN_SURFACE_CLEARANCE = 200;
 
 const MARS_LOCATIONS = [
   {
@@ -145,26 +149,43 @@ function rotateVector(
 export default function MarsGlobe() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
+  // Radius of the actual terrain under the camera (Mars is far from a perfect sphere:
+  // poles ~20 km low, volcanoes 20+ km high). Updated by the surface probe.
+  const surfaceRadiusRef = useRef(MARS_RADIUS);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [achievement, setAchievement] = useState(false);
+  const [loaderDone, setLoaderDone] = useState(false);
   const [dialogueOpen, setDialogueOpen] = useState(false);
   const [menuDialogueOpen, setMenuDialogueOpen] = useState(false);
-  const [factsOpen, setFactsOpen] = useState(false);
   const [menuHint, setMenuHint] = useState(false);
+  const [factsOpen, setFactsOpen] = useState(false);
+  const [onboardingSkipped, setOnboardingSkipped] = useState(false);
 
-  // Show achievement when Mars finishes loading
+  // Turn off every dialogue, hint and toast for the rest of the session
+  const skipOnboarding = () => {
+    setOnboardingSkipped(true);
+    setDialogueOpen(false);
+    setMenuHint(false);
+    setMenuDialogueOpen(false);
+    setFactsOpen(false);
+    setAchievement(false);
+  };
+
+  const onboardingActive = dialogueOpen || menuHint || menuDialogueOpen;
+
+  // Show achievement once the loading screen has finished
   useEffect(() => {
-    if (!loading && !error) {
+    if (loaderDone && !error) {
       setAchievement(true);
       setDialogueOpen(true);
       const audio = new Audio("/audio/minecraftacheivement.mp3");
       audio.play().catch(() => {});
       setTimeout(() => setAchievement(false), 4000);
     }
-  }, [loading, error]);
+  }, [loaderDone, error]);
 
   const [selectedLocation, setSelectedLocation] = useState<MarsLocation | null>(
     null,
@@ -221,6 +242,9 @@ export default function MarsGlobe() {
           scene3DOnly: true,
           baseLayer: false,
           globe: false,
+          // Render at the screen's real pixel density (sharper on HiDPI displays)
+          useBrowserRecommendedResolution: false,
+          msaaSamples: 4,
         });
 
         viewerRef.current = viewer;
@@ -324,7 +348,7 @@ export default function MarsGlobe() {
 
           const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
 
-          const altitude = Math.max(distance - MARS_RADIUS, 1);
+          const altitude = Math.max(distance - surfaceRadiusRef.current, 1);
 
           // ------------------------------------
           // ADAPTIVE ROTATION SENSITIVITY
@@ -447,7 +471,7 @@ export default function MarsGlobe() {
 
           const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
 
-          const altitude = Math.max(distance - MARS_RADIUS, 1);
+          const altitude = Math.max(distance - surfaceRadiusRef.current, 1);
 
           const sensitivity = 0.0015;
 
@@ -462,7 +486,10 @@ export default function MarsGlobe() {
 
           if (delta < 0) {
             // Zoom IN.
-            const maxZoomIn = Math.max(0, distance - MARS_RADIUS - 100);
+            const maxZoomIn = Math.max(
+              0,
+              distance - surfaceRadiusRef.current - MIN_SURFACE_CLEARANCE,
+            );
 
             camera.zoomIn(Math.min(zoomAmount, maxZoomIn));
           } else {
@@ -486,7 +513,18 @@ export default function MarsGlobe() {
         // LOAD MARS 3D TILES
         // ======================================
 
-        const mars = await Cesium.Cesium3DTileset.fromIonAssetId(3644333);
+        // Allow more parallel tile downloads (default 6) so detail fills in faster
+        Cesium.RequestScheduler.maximumRequestsPerServer = 18;
+
+        const mars = await Cesium.Cesium3DTileset.fromIonAssetId(3644333, {
+          // Higher detail: lower error = sharper tiles (Cesium default is 16).
+          // 4 requested too many tiles at once and left visible holes.
+          maximumScreenSpaceError: 6,
+          // Show a lower-res pass first so areas never appear empty
+          progressiveResolutionHeightFraction: 0.5,
+          // Keep full detail at the edges of the view too
+          foveatedScreenSpaceError: false,
+        });
 
         if (cancelled || viewer.isDestroyed()) {
           mars.destroy();
@@ -494,6 +532,49 @@ export default function MarsGlobe() {
         }
 
         viewer.scene.primitives.add(mars);
+
+        // ======================================
+        // SURFACE COLLISION
+        // ======================================
+        // Cast a ray from the camera to Mars' centre to find the real ground
+        // below, and never let the camera go under it.
+
+        const PROBE_RANGE = 80_000; // only probe when this close to the surface
+        let probeFrame = 0;
+
+        viewer.scene.preRender.addEventListener((scene) => {
+          if (probeFrame++ % 3 !== 0) return;
+
+          const camera = scene.camera;
+          const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
+
+          if (distance > MARS_RADIUS + PROBE_RANGE) {
+            surfaceRadiusRef.current = MARS_RADIUS;
+            return;
+          }
+
+          const down = Cesium.Cartesian3.negate(
+            Cesium.Cartesian3.normalize(camera.positionWC, new Cesium.Cartesian3()),
+            new Cesium.Cartesian3(),
+          );
+
+          const hit = scene.pickFromRay(new Cesium.Ray(camera.positionWC, down));
+
+          if (!hit?.position) return;
+
+          const groundRadius = Cesium.Cartesian3.magnitude(hit.position);
+          surfaceRadiusRef.current = groundRadius;
+
+          const minDistance = groundRadius + MIN_SURFACE_CLEARANCE;
+
+          if (distance < minDistance) {
+            Cesium.Cartesian3.multiplyByScalar(
+              Cesium.Cartesian3.normalize(camera.position, new Cesium.Cartesian3()),
+              minDistance,
+              camera.position,
+            );
+          }
+        });
 
         // ======================================
         // ADD MARS LOCATIONS
@@ -649,11 +730,16 @@ export default function MarsGlobe() {
 
     if (!camera || distance === null) return;
 
-    const altitude = Math.max(distance - MARS_RADIUS, 100);
+    const altitude = Math.max(distance - surfaceRadiusRef.current, 100);
 
     const zoomAmount = Math.max(Math.min(altitude * 0.2, 500_000), 25);
 
-    camera.zoomIn(zoomAmount);
+    const maxZoomIn = Math.max(
+      0,
+      distance - surfaceRadiusRef.current - MIN_SURFACE_CLEARANCE,
+    );
+
+    camera.zoomIn(Math.min(zoomAmount, maxZoomIn));
   };
 
   // ==========================================
@@ -666,7 +752,7 @@ export default function MarsGlobe() {
 
     if (!camera || distance === null) return;
 
-    const altitude = Math.max(distance - MARS_RADIUS, 100);
+    const altitude = Math.max(distance - surfaceRadiusRef.current, 100);
 
     const zoomAmount = Math.max(Math.min(altitude * 0.3, 500_000), 25);
 
@@ -727,7 +813,7 @@ export default function MarsGlobe() {
     if (!viewer) return;
 
     setSelectedLocation(location);
-    setFactsOpen(true);
+    setFactsOpen(!onboardingSkipped);
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
@@ -859,9 +945,9 @@ export default function MarsGlobe() {
         {/* Selected location */}
         {selectedLocation && !factsOpen && (
           <div className="max-w-xs rounded-lg border border-neutral-200 bg-white p-4">
-            <h2 className="text-base">{selectedLocation.name}</h2>
-            <p className="mt-1 text-sm text-neutral-500">{selectedLocation.description}</p>
-            <p className="mt-2 text-xs text-neutral-400">
+            <h2 className="text-xl">{selectedLocation.name}</h2>
+            <p className="mt-1 text-base text-neutral-500">{selectedLocation.description}</p>
+            <p className="mt-2 text-sm text-neutral-400">
               {selectedLocation.latitude.toFixed(2)}°, {selectedLocation.longitude.toFixed(2)}°
             </p>
           </div>
@@ -908,7 +994,7 @@ export default function MarsGlobe() {
       )}
 
       {/* Location facts, Ren'Py style */}
-      {factsOpen && selectedLocation && !dialogueOpen && !menuDialogueOpen && (
+      {factsOpen && !onboardingSkipped && selectedLocation && !dialogueOpen && !menuDialogueOpen && (
         <LocationDialogue
           key={selectedLocation.name}
           title={selectedLocation.name}
@@ -917,18 +1003,20 @@ export default function MarsGlobe() {
         />
       )}
 
-      {/* Loading overlay */}
-      {loading && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#080b16]">
-          <div className="text-center">
-            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-gray-700 border-t-orange-500" />
-
-            <p className="text-sm tracking-widest text-gray-300">
-              INITIALIZING MARS...
-            </p>
-          </div>
-        </div>
+      {/* Skip onboarding */}
+      {onboardingActive && !onboardingSkipped && (
+        <button
+          type="button"
+          onClick={skipOnboarding}
+          style={{ fontFamily: "MainFont, sans-serif" }}
+          className="absolute left-1/2 top-5 z-40 -translate-x-1/2 rounded-md border border-white/60 bg-black/50 px-4 py-1.5 text-sm text-white hover:bg-black/70"
+        >
+          Skip onboarding
+        </button>
       )}
+
+      {/* Loading overlay */}
+      {!loaderDone && <MarsLoader ready={!loading} onFinish={() => setLoaderDone(true)} />}
 
       {/* Error overlay */}
       {error && !loading && (
