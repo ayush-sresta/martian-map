@@ -935,7 +935,10 @@ export default function MarsGlobe() {
   const getMapWidth = (camera: Cesium.Camera) => {
     const frustum = camera.frustum as Cesium.OrthographicOffCenterFrustum;
 
-    return frustum.right - frustum.left;
+    const left = frustum.left ?? 0;
+    const right = frustum.right ?? 0;
+
+    return right - left;
   };
 
   const pan2D = (direction: "left" | "right" | "up" | "down") => {
