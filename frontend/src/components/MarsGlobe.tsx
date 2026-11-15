@@ -1,6 +1,8 @@
 "use client";
 
 import MarsDialogue from "./MarsDialogue";
+import { createSound } from "./sound";
+import MuteButton from "./MuteButton";
 import MarsLoader from "./MarsLoader";
 import LocationDialogue from "./LocationDialogue";
 import { LOCATION_FACTS } from "./locationFacts";
@@ -114,8 +116,43 @@ const MARS_LOCATIONS = [
   },
 ];
 
-
 type MarsLocation = (typeof MARS_LOCATIONS)[number];
+
+// ==========================================
+// HELPER COMPONENTS FOR BUTTONS
+// ==========================================
+
+function ButtonGroup({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex overflow-hidden rounded-lg border border-white/10 bg-[#151a2a]/90 backdrop-blur-md">
+      {children}
+    </div>
+  );
+}
+
+function ControlButton({
+  onClick,
+  disabled,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      className="flex h-10 min-w-[40px] items-center justify-center px-3 text-sm text-white transition hover:bg-orange-500 disabled:opacity-40"
+    >
+      {children}
+    </button>
+  );
+}
 
 // ==========================================
 // ROTATE A VECTOR AROUND AN AXIS
@@ -181,7 +218,7 @@ export default function MarsGlobe() {
     if (loaderDone && !error) {
       setAchievement(true);
       setDialogueOpen(true);
-      const audio = new Audio("/audio/minecraftacheivement.mp3");
+      const audio = createSound("/audio/minecraftacheivement.mp3");
       audio.play().catch(() => {});
       setTimeout(() => setAchievement(false), 4000);
     }
@@ -697,7 +734,6 @@ export default function MarsGlobe() {
         if (handlePointerCancel) {
           inputCanvas.removeEventListener("pointercancel", handlePointerCancel);
         }
-
       }
 
       if (viewer && !viewer.isDestroyed()) {
@@ -844,6 +880,11 @@ export default function MarsGlobe() {
           Mission: Mars
         </h1>
       </header>
+
+      {/* Mute: only while a voiced dialogue is on screen */}
+      {(dialogueOpen || menuDialogueOpen || factsOpen) && !onboardingSkipped && (
+        <MuteButton style={{ position: "absolute", top: 20, right: 80, zIndex: 30 }} />
+      )}
 
       {/* Hamburger button */}
       <button
@@ -1027,42 +1068,5 @@ export default function MarsGlobe() {
         </div>
       )}
     </main>
-  );
-}
-
-// ==========================================
-// REUSABLE CONTROL BUTTON
-// ==========================================
-
-function ButtonGroup({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex divide-x divide-neutral-200 overflow-hidden rounded bg-white shadow-sm">
-      {children}
-    </div>
-  );
-}
-
-function ControlButton({
-  children,
-  onClick,
-  disabled = false,
-  label,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className="flex h-8 min-w-8 items-center justify-center px-2 text-sm text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200 disabled:opacity-30"
-    >
-      {children}
-    </button>
   );
 }

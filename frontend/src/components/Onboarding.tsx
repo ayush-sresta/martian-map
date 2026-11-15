@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { createSound } from "./sound";
+import MuteButton from "./MuteButton";
 
 const SLIDE_DURATION = 1800;
 const BLACK_DURATION = 600;
@@ -68,7 +70,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   useEffect(() => {
     if (!isDialogue || !audioUnlocked) return;
     if (!audioRef.current) {
-      audioRef.current = new Audio("/audio/astronaut.mp3");
+      audioRef.current = createSound("/audio/astronaut.mp3");
     }
     const audio = audioRef.current;
     const longGifs = phase === "dialogue" && [2, 3, 4].includes(lineIndex);
@@ -219,6 +221,12 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
       )}
 
+<<<<<<< HEAD
+=======
+      {/* Mute */}
+      {!skipped && !fadeOut && <MuteButton style={{ position: "absolute", top: 20, right: 140, zIndex: 20, width: 34, height: 34, borderRadius: 6 }} />}
+
+>>>>>>> 601d170f3b9bff1d0dc942949ce50bb54bb9ad5b
       {/* Skip intro */}
       {!skipped && !fadeOut && (
         <button
