@@ -36,11 +36,11 @@ Objective: The objective of this platform is to transform Martian topograhical d
 -NASA Open Data     
 -React.js   
 
-7.TEAM
+7.TEAM  
 -Royan Rai  
 -Sanskar Rai    
--Ayush Shrestha 
+-Ayush Shrestha   
 -Iroj Shakya    
--Aastha Khanaal 
+-Aastha Khanaal   
 -Prastut Karki  
 
