@@ -1,1485 +1,196 @@
-"use client";
-
-import MarsDialogue from "./MarsDialogue";
-import { createSound } from "./sound";
-import MuteButton from "./MuteButton";
-import MarsLoader from "./MarsLoader";
-import LocationDialogue from "./LocationDialogue";
-import { ArrowIcon, MinusIcon, PlusIcon, PointerIcon, RocketIcon } from "./CrayonIcon";
-import { LOCATION_FACTS } from "./locationFacts";
-import {
-  fetchMarsRoute,
-  drawMarsPath,
-  clearMarsPath,
-  type PathResult,
-  type RouteStop,
-} from "./marsPath";
-import { useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
 import * as Cesium from "cesium";
 
-import "cesium/Build/Cesium/Widgets/widgets.css";
+const API_URL = process.env.NEXT_PUBLIC_MARS_API_URL ?? "http://localhost:4000";
+const PATH_ENTITY_ID = "mars-walking-path";
 
-declare global {
-  interface Window {
-    CESIUM_BASE_URL: string;
-  }
-}
+type Place = string | { latitude: number; longitude: number };
 
-const MARS_RADIUS = 3_396_190;
+export type RouteStop = { name: string; latitude: number; longitude: number };
 
-// Closest the camera may get to the real (tiled) surface, in metres.
-const MIN_SURFACE_CLEARANCE = 200;
-
-// Seconds for the 2D <-> 3D morph. Set to 0 for an instant switch.
-const MORPH_DURATION = 2;
-
-const MARS_LOCATIONS = [
-  {
-    name: "Jezero Crater",
-    description: "Perseverance landing site",
-    longitude: 77.58,
-    latitude: 18.38,
-  },
-  {
-    name: "Gale Crater",
-    description: "Curiosity rover landing site",
-    longitude: 137.8,
-    latitude: -5.4,
-  },
-  {
-    name: "Olympus Mons",
-    description: "Largest volcano in the Solar System",
-    longitude: 226.2,
-    latitude: 18.65,
-  },
-  {
-    name: "Valles Marineris",
-    description: "One of the largest canyon systems in the Solar System",
-    longitude: 301.4123,
-    latitude: -14.0059,
-  },
-  {
-    name: "Hellas Planitia",
-    description: "One of the largest impact basins on Mars",
-    longitude: 70.5025,
-    latitude: -42.4301,
-  },
-  {
-    name: "Isidis Planitia",
-    description: "Ancient impact basin",
-    longitude: 88.0,
-    latitude: 12.0,
-  },
-  {
-    name: "Utopia Planitia",
-    description: "Vast northern impact basin",
-    longitude: 110.0,
-    latitude: 45.0,
-  },
-  {
-    name: "Elysium Planitia",
-    description: "NASA InSight lander region",
-    longitude: 154.7372,
-    latitude: 2.979,
-  },
-  {
-    name: "Arsia Mons",
-    description: "Large shield volcano",
-    longitude: 239.91,
-    latitude: -8.26,
-  },
-  {
-    name: "Pavonis Mons",
-    description: "Equatorial shield volcano",
-    longitude: 247.0,
-    latitude: 0.0,
-  },
-  {
-    name: "Ascraeus Mons",
-    description: "Large shield volcano",
-    longitude: 255.92,
-    latitude: 11.92,
-  },
-  {
-    name: "Alba Mons",
-    description: "Vast volcanic formation",
-    longitude: 249.29,
-    latitude: 41.08,
-  },
-  {
-    name: "Argyre Planitia",
-    description: "Large southern impact basin",
-    longitude: 320.0,
-    latitude: -50.0,
-  },
-  {
-    name: "Apollinaris Mons",
-    description: "Ancient volcanic mountain",
-    longitude: 174.793,
-    latitude: -9.1712,
-  },
-  {
-    name: "Elysium Mons",
-    description: "Large shield volcano",
-    longitude: 147.2138,
-    latitude: 25.0232,
-  },
-];
-
-type MarsLocation = (typeof MARS_LOCATIONS)[number];
-
-// ==========================================
-// MAP LAYERS
-// ==========================================
-// "surface" is the original 3D tileset. Every other layer is NASA Mars Trek
-// imagery (equirectangular WMTS) draped on a smooth Mars globe.
-// Add more by appending an entry with a Trek tile URL.
-
-type MarsLayer = {
-  id: string;
-  name: string;
-  url: string | null;
-  maximumLevel: number;
-  credit?: string;
+export type PathOptions = {
+  weights?: { slope?: number; surface?: number; temperature?: number; interest?: number };
+  localSolarHour?: number;
+  maxSlopeDeg?: number;
+  walkingSpeedMs?: number;
+  evaHoursPerSol?: number;
 };
 
-const MARS_LAYERS: MarsLayer[] = [
-  {
-    id: "surface",
-    name: "3D Surface",
-    url: null,
-    maximumLevel: 0,
-  },
-  {
-    id: "mola",
-    name: "MOLA Color Shaded",
-    url: "https://trek.nasa.gov/tiles/Mars/EQ/Mars_MGS_MOLA_ClrShade_merge_global_463m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg",
-    maximumLevel: 7,
-    credit: "NASA/JPL/MGS MOLA",
-  },
-  {
-    id: "viking",
-    name: "Viking Color Mosaic",
-    url: "https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg",
-    maximumLevel: 8,
-    credit: "NASA/JPL/USGS Viking MDIM 2.1",
-  },
-];
-
-// ==========================================
-// REUSABLE CONTROL BUTTON
-// ==========================================
-
-function ControlButton({
-  children,
-  onClick,
-  disabled = false,
-  label,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      title={label}
-      className="crayon flex h-11 min-w-11 items-center justify-center rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] px-3 text-base text-[#1c1c3a] transition hover:scale-105 active:scale-95 disabled:opacity-30"
-    >
-      {children}
-    </button>
-  );
-}
-
-// ==========================================
-// ROTATE A VECTOR AROUND AN AXIS
-// ==========================================
-
-function rotateVector(
-  vector: Cesium.Cartesian3,
-  axis: Cesium.Cartesian3,
-  angle: number,
-): Cesium.Cartesian3 {
-  const normalizedAxis = Cesium.Cartesian3.normalize(
-    axis,
-    new Cesium.Cartesian3(),
-  );
-
-  const quaternion = Cesium.Quaternion.fromAxisAngle(normalizedAxis, angle);
-
-  const matrix = Cesium.Matrix3.fromQuaternion(quaternion);
-
-  return Cesium.Matrix3.multiplyByVector(
-    matrix,
-    vector,
-    new Cesium.Cartesian3(),
-  );
-}
-
-// ==========================================
-// MARS GLOBE COMPONENT
-// ==========================================
-
-export default function MarsGlobe() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const viewerRef = useRef<Cesium.Viewer | null>(null);
-  const tilesetRef = useRef<Cesium.Cesium3DTileset | null>(null);
-  // Radius of the actual terrain under the camera (Mars is far from a perfect sphere:
-  // poles ~20 km low, volcanoes 20+ km high). Updated by the surface probe.
-  const surfaceRadiusRef = useRef(MARS_RADIUS);
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [achievement, setAchievement] = useState(false);
-  const [loaderDone, setLoaderDone] = useState(false);
-  const [dialogueOpen, setDialogueOpen] = useState(false);
-  const [menuDialogueOpen, setMenuDialogueOpen] = useState(false);
-  const [menuHint, setMenuHint] = useState(false);
-  const [factsOpen, setFactsOpen] = useState(false);
-  const [onboardingSkipped, setOnboardingSkipped] = useState(false);
-  const [projection, setProjection] = useState<"3D" | "2D">("3D");
-  const [activeLayerId, setActiveLayerId] = useState("surface");
-
-  // Route planning (2 or more places -> pathfinding API)
-  const [routeStops, setRouteStops] = useState<RouteStop[]>([]);
-  const [routeLoading, setRouteLoading] = useState(false);
-  const [routeError, setRouteError] = useState<string | null>(null);
-  const [routeResult, setRouteResult] = useState<PathResult | null>(null);
-  const [customInput, setCustomInput] = useState("");
-
-  // Turn off every dialogue, hint and toast for the rest of the session
-  const skipOnboarding = () => {
-    setOnboardingSkipped(true);
-    setDialogueOpen(false);
-    setMenuHint(false);
-    setMenuDialogueOpen(false);
-    setFactsOpen(false);
-    setAchievement(false);
+export type PathResult = {
+  summary: {
+    distanceKm: number;
+    walkingTime: { seconds: number; hours: number; formatted: string };
+    evaSols: number;
+    ascentM: number;
+    descentM: number;
+    maxSlopeDeg: number;
+    temperatureC: { average: number; min: number; max: number };
+    surfaces: { surface: string; percent: number }[];
+    sitesNearPath: { name: string; distanceFromPathKm: number }[];
   };
+  path: {
+    latitude: number;
+    longitude: number;
+    elevationM: number;
+    temperatureC: number;
+    surface: string;
+    interest: number;
+    distanceFromStartM: number;
+    elapsedSeconds: number;
+  }[];
+  /** Flat [lon, lat, lon, lat, ...] */
+  positions: number[];
+};
 
-  const onboardingActive = dialogueOpen || menuHint || menuDialogueOpen;
+export async function fetchMarsPath(
+  start: Place,
+  goal: Place,
+  options: PathOptions = {},
+): Promise<PathResult> {
+  const response = await fetch(`${API_URL}/api/path`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ start, goal, ...options }),
+  });
 
-  // Show achievement once the loading screen has finished
-  useEffect(() => {
-    if (loaderDone && !error) {
-      setAchievement(true);
-      setDialogueOpen(true);
-      const audio = createSound("/audio/minecraftacheivement.mp3");
-      audio.play().catch(() => {});
-      setTimeout(() => setAchievement(false), 4000);
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error ?? "Path request failed");
+  return body as PathResult;
+}
+
+// ==========================================
+// MULTI-STOP ROUTES
+// ==========================================
+
+function formatDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.round((seconds % 3600) / 60);
+  return `${h}h ${m}m`;
+}
+
+// Joins the results of consecutive legs (A->B, B->C, ...) into one result.
+function mergePathResults(results: PathResult[]): PathResult {
+  let km = 0;
+  let seconds = 0;
+  let ascentM = 0;
+  let descentM = 0;
+  let maxSlopeDeg = 0;
+  let evaSols = 0;
+  let tempWeighted = 0;
+  let tMin = Infinity;
+  let tMax = -Infinity;
+  const surfaceKm = new Map<string, number>();
+  const sites = new Map<string, number>();
+  const path: PathResult["path"] = [];
+  const positions: number[] = [];
+
+  for (const r of results) {
+    const s = r.summary;
+    const offsetM = km * 1000;
+    const offsetS = seconds;
+
+    for (const p of r.path) {
+      path.push({
+        ...p,
+        distanceFromStartM: p.distanceFromStartM + offsetM,
+        elapsedSeconds: p.elapsedSeconds + offsetS,
+      });
     }
-  }, [loaderDone, error]);
-
-  const [selectedLocation, setSelectedLocation] = useState<MarsLocation | null>(
-    null,
-  );
-
-  // ==========================================
-  // INITIALIZE CESIUM
-  // ==========================================
-
-  useEffect(() => {
-    let cancelled = false;
-    let viewer: Cesium.Viewer | undefined;
-
-    let inputCanvas: HTMLCanvasElement | undefined;
-
-    let handleWheel: ((event: WheelEvent) => void) | undefined;
-
-    let handlePointerDown: ((event: PointerEvent) => void) | undefined;
-
-    let handlePointerMove: ((event: PointerEvent) => void) | undefined;
-
-    let handlePointerUp: ((event: PointerEvent) => void) | undefined;
-
-    let handlePointerCancel: (() => void) | undefined;
-    let cursorObserver: MutationObserver | undefined;
-
-    async function initializeMars() {
-      try {
-        const token = process.env.NEXT_PUBLIC_CESIUM_ION_TOKEN;
-
-        if (!token) {
-          throw new Error(
-            "Cesium ion token is missing. Check your .env.local file.",
-          );
-        }
-
-        if (!containerRef.current) return;
-
-        window.CESIUM_BASE_URL = "/cesium/";
-
-        Cesium.Ion.defaultAccessToken = token;
-
-        // Mars globe that carries the imagery layers (and the flat 2D map).
-        // Hidden while the 3D tileset surface is showing.
-        const marsGlobe = new Cesium.Globe(Cesium.Ellipsoid.MARS);
-        marsGlobe.show = false;
-        marsGlobe.showGroundAtmosphere = false;
-        marsGlobe.depthTestAgainstTerrain = true;
-        marsGlobe.baseColor = Cesium.Color.fromCssColorString("#080b16");
-
-        viewer = new Cesium.Viewer(containerRef.current, {
-          animation: false,
-          timeline: false,
-          geocoder: false,
-          homeButton: false,
-          sceneModePicker: false,
-          navigationHelpButton: false,
-          fullscreenButton: false,
-          baseLayerPicker: false,
-          infoBox: false,
-          selectionIndicator: false,
-          // Needed so the scene can morph between 3D and the flat 2D map
-          scene3DOnly: false,
-          mapProjection: new Cesium.GeographicProjection(Cesium.Ellipsoid.MARS),
-          baseLayer: false,
-          globe: marsGlobe,
-          // Keep Earth's blue sky halo off Mars
-          skyAtmosphere: false,
-          // Render at the screen's real pixel density (sharper on HiDPI displays)
-          useBrowserRecommendedResolution: false,
-          msaaSamples: 4,
-        });
-
-        viewerRef.current = viewer;
-
-        viewer.scene.backgroundColor =
-          Cesium.Color.fromCssColorString("#080b16");
-
-        // ======================================
-        // CAMERA CONFIGURATION
-        // ======================================
-
-        const controller = viewer.scene.screenSpaceCameraController;
-
-        controller.enableInputs = true;
-
-        // Disable default rotation.
-        // We will implement our own mouse rotation.
-        controller.enableRotate = false;
-
-        // Preserve other camera interactions.
-        controller.enableZoom = true;
-        controller.enableTilt = true;
-        controller.enableLook = true;
-        controller.enableTranslate = false;
-
-        controller.enableCollisionDetection = false;
-
-        // Keep native trackpad pinch zoom.
-        controller.zoomEventTypes = [Cesium.CameraEventType.PINCH];
-
-        controller.zoomFactor = 5.0;
-        controller.minimumZoomDistance = 100;
-        controller.maximumZoomDistance = 50_000_000;
-
-        // ======================================
-        // CUSTOM MOUSE DRAG ROTATION
-        // ======================================
-
-        const canvas = viewer.scene.canvas;
-
-        inputCanvas = canvas;
-
-        // Force custom CSS cursor by blocking Cesium's inline cursor changes
-        cursorObserver = new MutationObserver(() => {
-          if (canvas.style.cursor) canvas.style.cursor = "";
-        });
-        cursorObserver.observe(canvas, { attributes: true, attributeFilter: ["style"] });
-        let isDragging = false;
-
-        let lastX = 0;
-        let lastY = 0;
-
-        // Maximum close-up rotation sensitivity.
-        const MAX_ZOOM_SENSITIVITY = 8;
-
-        // Base rotation sensitivity.
-        const BASE_ROTATION_SENSITIVITY = 0.0008;
-
-        // --------------------------------------
-        // POINTER DOWN
-        // --------------------------------------
-
-        handlePointerDown = (event: PointerEvent) => {
-          // Only left mouse button.
-          if (event.pointerType !== "mouse" || event.button !== 0) {
-            return;
-          }
-
-          // Custom globe rotation is 3D only; the flat 2D map uses Cesium's own panning.
-          if (
-            !viewer ||
-            viewer.isDestroyed() ||
-            viewer.scene.mode !== Cesium.SceneMode.SCENE3D
-          ) {
-            return;
-          }
-
-          isDragging = true;
-
-          lastX = event.clientX;
-          lastY = event.clientY;
-
-          canvas.setPointerCapture(event.pointerId);
-
-          event.preventDefault();
-        };
-
-        // --------------------------------------
-        // POINTER MOVE
-        // --------------------------------------
-
-        handlePointerMove = (event: PointerEvent) => {
-          if (
-            !isDragging ||
-            !viewer ||
-            viewer.isDestroyed() ||
-            viewer.scene.mode !== Cesium.SceneMode.SCENE3D
-          ) {
-            return;
-          }
-
-          const camera = viewer.camera;
-
-          const deltaX = event.clientX - lastX;
-          const deltaY = event.clientY - lastY;
-
-          lastX = event.clientX;
-          lastY = event.clientY;
-
-          if (deltaX === 0 && deltaY === 0) return;
-
-          // ------------------------------------
-          // CALCULATE CAMERA ALTITUDE
-          // ------------------------------------
-
-          const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
-
-          const altitude = Math.max(distance - surfaceRadiusRef.current, 1);
-
-          // ------------------------------------
-          // ADAPTIVE ROTATION SENSITIVITY
-          // ------------------------------------
-
-          const zoomFactor = Math.min(
-            MAX_ZOOM_SENSITIVITY,
-            Math.max(1, Math.sqrt(MARS_RADIUS / altitude)),
-          );
-
-          const sensitivity = BASE_ROTATION_SENSITIVITY * zoomFactor;
-
-          const horizontalAngle = -deltaX * sensitivity;
-
-          // Vertical drag direction (inverted).
-          const verticalAngle = -deltaY * sensitivity;
-
-          // ------------------------------------
-          // GET CAMERA VECTORS
-          // ------------------------------------
-
-          let position = camera.positionWC.clone();
-          let direction = camera.directionWC.clone();
-          let up = camera.upWC.clone();
-          let right = camera.rightWC.clone();
-
-          // ------------------------------------
-          // HORIZONTAL ROTATION
-          // Rotate around Mars' north-south axis.
-          // ------------------------------------
-
-          const marsAxis = Cesium.Cartesian3.UNIT_Z;
-
-          position = rotateVector(position, marsAxis, horizontalAngle);
-
-          direction = rotateVector(direction, marsAxis, horizontalAngle);
-
-          up = rotateVector(up, marsAxis, horizontalAngle);
-
-          right = rotateVector(right, marsAxis, horizontalAngle);
-
-          // ------------------------------------
-          // VERTICAL ROTATION
-          // Rotate around camera's right axis.
-          // ------------------------------------
-
-          position = rotateVector(position, right, verticalAngle);
-
-          direction = rotateVector(direction, right, verticalAngle);
-
-          up = rotateVector(up, right, verticalAngle);
-
-          // ------------------------------------
-          // APPLY CAMERA ROTATION
-          // ------------------------------------
-
-          camera.setView({
-            destination: position,
-
-            orientation: {
-              direction,
-              up,
-            },
-          });
-
-          event.preventDefault();
-        };
-
-        // --------------------------------------
-        // POINTER UP
-        // --------------------------------------
-
-        handlePointerUp = (event: PointerEvent) => {
-          if (event.pointerType !== "mouse") return;
-
-          isDragging = false;
-
-          if (canvas.hasPointerCapture(event.pointerId)) {
-            canvas.releasePointerCapture(event.pointerId);
-          }
-        };
-
-        // --------------------------------------
-        // POINTER CANCEL
-        // --------------------------------------
-
-        handlePointerCancel = () => {
-          isDragging = false;
-        };
-
-        // Register mouse events.
-        canvas.addEventListener("pointerdown", handlePointerDown);
-
-        canvas.addEventListener("pointermove", handlePointerMove);
-
-        canvas.addEventListener("pointerup", handlePointerUp);
-
-        canvas.addEventListener("pointercancel", handlePointerCancel);
-
-        // ======================================
-        // CUSTOM MOUSE / TRACKPAD WHEEL ZOOM
-        // ======================================
-
-        handleWheel = (event: WheelEvent) => {
-          // Custom zoom is 3D only; the flat 2D map uses Cesium's own wheel zoom.
-          if (
-            !viewer ||
-            viewer.isDestroyed() ||
-            viewer.scene.mode !== Cesium.SceneMode.SCENE3D
-          ) {
-            return;
-          }
-
-          event.preventDefault();
-
-          const camera = viewer.camera;
-
-          let delta = event.deltaY;
-
-          // Normalize scroll values.
-          if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
-            delta *= 16;
-          } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-            delta *= canvas.clientHeight;
-          }
-
-          if (Math.abs(delta) < 0.01) return;
-
-          const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
-
-          const altitude = Math.max(distance - surfaceRadiusRef.current, 1);
-
-          const sensitivity = 0.0015;
-
-          const zoomFraction = 1 - Math.exp(-Math.abs(delta) * sensitivity);
-
-          const minimumZoomStep = Math.min(altitude * 0.03, 10);
-
-          const zoomAmount = Math.min(
-            Math.max(altitude * zoomFraction, minimumZoomStep),
-            altitude * 0.35,
-          );
-
-          if (delta < 0) {
-            // Zoom IN.
-            const maxZoomIn = Math.max(
-              0,
-              distance - surfaceRadiusRef.current - MIN_SURFACE_CLEARANCE,
-            );
-
-            camera.zoomIn(Math.min(zoomAmount, maxZoomIn));
-          } else {
-            // Zoom OUT.
-            const maxZoomOut = Math.max(0, 50_000_000 - distance);
-
-            camera.zoomOut(Math.min(zoomAmount, maxZoomOut));
-          }
-        };
-
-        canvas.addEventListener("wheel", handleWheel, { passive: false });
-
-        // ======================================
-        // LOCATION VISIBILITY
-        // ======================================
-
-        const LABEL_VISIBLE_DISTANCE = 2_500_000;
-        const MARKER_VISIBLE_DISTANCE = 8_000_000;
-
-        // ======================================
-        // LOAD MARS 3D TILES
-        // ======================================
-
-        // Allow more parallel tile downloads (default 6) so detail fills in faster
-        Cesium.RequestScheduler.maximumRequestsPerServer = 18;
-
-        const mars = await Cesium.Cesium3DTileset.fromIonAssetId(3644333, {
-          // Higher detail: lower error = sharper tiles (Cesium default is 16).
-          // 4 requested too many tiles at once and left visible holes.
-          maximumScreenSpaceError: 6,
-          // Show a lower-res pass first so areas never appear empty
-          progressiveResolutionHeightFraction: 0.5,
-          // Keep full detail at the edges of the view too
-          foveatedScreenSpaceError: false,
-        });
-
-        if (cancelled || viewer.isDestroyed()) {
-          mars.destroy();
-          return;
-        }
-
-        viewer.scene.primitives.add(mars);
-
-        tilesetRef.current = mars;
-
-        // ======================================
-        // SURFACE COLLISION
-        // ======================================
-        // Cast a ray from the camera to Mars' centre to find the real ground
-        // below, and never let the camera go under it.
-
-        const PROBE_RANGE = 80_000; // only probe when this close to the surface
-        let probeFrame = 0;
-
-        viewer.scene.preRender.addEventListener((scene) => {
-          // The probe works in 3D world space only (not the flat 2D map / morphs).
-          if (scene.mode !== Cesium.SceneMode.SCENE3D) return;
-
-          if (probeFrame++ % 3 !== 0) return;
-
-          const camera = scene.camera;
-          const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
-
-          if (distance > MARS_RADIUS + PROBE_RANGE) {
-            surfaceRadiusRef.current = MARS_RADIUS;
-            return;
-          }
-
-          let groundRadius: number;
-
-          if (mars.show) {
-            const down = Cesium.Cartesian3.negate(
-              Cesium.Cartesian3.normalize(camera.positionWC, new Cesium.Cartesian3()),
-              new Cesium.Cartesian3(),
-            );
-
-            const hit = scene.pickFromRay(new Cesium.Ray(camera.positionWC, down));
-
-            if (!hit?.position) return;
-
-            groundRadius = Cesium.Cartesian3.magnitude(hit.position);
-          } else {
-            // Imagery layers sit on the smooth Mars ellipsoid
-            const ground = Cesium.Ellipsoid.MARS.scaleToGeodeticSurface(
-              camera.positionWC,
-              new Cesium.Cartesian3(),
-            );
-
-            if (!ground) return;
-
-            groundRadius = Cesium.Cartesian3.magnitude(ground);
-          }
-
-          surfaceRadiusRef.current = groundRadius;
-
-          const minDistance = groundRadius + MIN_SURFACE_CLEARANCE;
-
-          if (distance < minDistance) {
-            Cesium.Cartesian3.multiplyByScalar(
-              Cesium.Cartesian3.normalize(camera.position, new Cesium.Cartesian3()),
-              minDistance,
-              camera.position,
-            );
-          }
-        });
-
-        // ======================================
-        // ADD MARS LOCATIONS
-        // ======================================
-
-        MARS_LOCATIONS.forEach((location) => {
-          viewer!.entities.add({
-            name: location.name,
-
-            position: Cesium.Cartesian3.fromDegrees(
-              location.longitude,
-              location.latitude,
-              1000,
-              Cesium.Ellipsoid.MARS,
-            ),
-
-            point: {
-              pixelSize: 10,
-
-              color: Cesium.Color.fromCssColorString("#ff7043"),
-
-              outlineColor: Cesium.Color.WHITE,
-              outlineWidth: 2,
-
-              distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
-                0,
-                MARKER_VISIBLE_DISTANCE,
-              ),
-            },
-
-            label: {
-              text: location.name,
-              font: "14px sans-serif",
-
-              fillColor: Cesium.Color.WHITE,
-              outlineColor: Cesium.Color.BLACK,
-              outlineWidth: 3,
-
-              style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-
-              pixelOffset: new Cesium.Cartesian2(0, -22),
-
-              distanceDisplayCondition: new Cesium.DistanceDisplayCondition(
-                0,
-                LABEL_VISIBLE_DISTANCE,
-              ),
-
-              scaleByDistance: new Cesium.NearFarScalar(
-                500_000,
-                1.0,
-                LABEL_VISIBLE_DISTANCE,
-                0.5,
-              ),
-            },
-          });
-        });
-
-        // ======================================
-        // INITIAL CAMERA POSITION
-        // ======================================
-
-        viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(
-            77.58,
-            18.38,
-            4_000_000,
-            Cesium.Ellipsoid.MARS,
-          ),
-
-          duration: 2,
-        });
-
-        if (!cancelled) {
-          setError(null);
-        }
-      } catch (err) {
-        console.error("Mars initialization failed:", err);
-
-        if (!cancelled) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Something went wrong while loading Mars.",
-          );
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    initializeMars();
-
-    // ==========================================
-    // CLEANUP
-    // ==========================================
-
-    return () => {
-      cancelled = true;
-
-      if (inputCanvas) {
-        cursorObserver?.disconnect();
-        if (handleWheel) {
-          inputCanvas.removeEventListener("wheel", handleWheel);
-        }
-
-        if (handlePointerDown) {
-          inputCanvas.removeEventListener("pointerdown", handlePointerDown);
-        }
-
-        if (handlePointerMove) {
-          inputCanvas.removeEventListener("pointermove", handlePointerMove);
-        }
-
-        if (handlePointerUp) {
-          inputCanvas.removeEventListener("pointerup", handlePointerUp);
-        }
-
-        if (handlePointerCancel) {
-          inputCanvas.removeEventListener("pointercancel", handlePointerCancel);
-        }
-      }
-
-      if (viewer && !viewer.isDestroyed()) {
-        viewer.destroy();
-      }
-
-      viewerRef.current = null;
-      tilesetRef.current = null;
-    };
-  }, []);
-
-  // ==========================================
-  // PROJECTION (2D / 3D) + MAP LAYERS
-  // ==========================================
-
-  useEffect(() => {
-    const viewer = viewerRef.current;
-    const tileset = tilesetRef.current;
-
-    if (loading || !viewer || viewer.isDestroyed() || !tileset) return;
-
-    const scene = viewer.scene;
-    const globe = scene.globe;
-    const controller = scene.screenSpaceCameraController;
-
-    // The "3D Surface" tileset only exists in 3D; the flat map always needs
-    // imagery, so it falls back to the first imagery layer.
-    const selected = MARS_LAYERS.find((layer) => layer.id === activeLayerId);
-    const imagery =
-      selected?.url
-        ? selected
-        : projection === "2D"
-          ? MARS_LAYERS.find((layer) => layer.url)
-          : undefined;
-
-    globe.imageryLayers.removeAll();
-
-    if (imagery?.url) {
-      globe.imageryLayers.addImageryProvider(
-        new Cesium.UrlTemplateImageryProvider({
-          url: imagery.url,
-          tilingScheme: new Cesium.GeographicTilingScheme({
-            ellipsoid: Cesium.Ellipsoid.MARS,
-          }),
-          maximumLevel: imagery.maximumLevel,
-          credit: imagery.credit,
-        }),
+    positions.push(...r.positions);
+
+    km += s.distanceKm;
+    seconds += s.walkingTime.seconds;
+    ascentM += s.ascentM;
+    descentM += s.descentM;
+    evaSols += s.evaSols;
+    maxSlopeDeg = Math.max(maxSlopeDeg, s.maxSlopeDeg);
+    tempWeighted += s.temperatureC.average * s.distanceKm;
+    tMin = Math.min(tMin, s.temperatureC.min);
+    tMax = Math.max(tMax, s.temperatureC.max);
+
+    for (const x of s.surfaces) {
+      surfaceKm.set(
+        x.surface,
+        (surfaceKm.get(x.surface) ?? 0) + (x.percent / 100) * s.distanceKm,
       );
     }
 
-    globe.show = !!imagery;
-    tileset.show = !imagery;
-
-    if (projection === "2D") {
-      // Flat map: use Cesium's own pan + wheel zoom
-      controller.enableTranslate = true;
-      controller.zoomEventTypes = [
-        Cesium.CameraEventType.WHEEL,
-        Cesium.CameraEventType.PINCH,
-      ];
-
-      if (scene.mode !== Cesium.SceneMode.SCENE2D) {
-        scene.morphTo2D(MORPH_DURATION);
-      }
-    } else {
-      // Globe: back to the custom rotation / wheel zoom
-      controller.enableTranslate = false;
-      controller.zoomEventTypes = [Cesium.CameraEventType.PINCH];
-
-      if (scene.mode !== Cesium.SceneMode.SCENE3D) {
-        scene.morphTo3D(MORPH_DURATION);
+    for (const site of s.sitesNearPath) {
+      const prev = sites.get(site.name);
+      if (prev === undefined || site.distanceFromPathKm < prev) {
+        sites.set(site.name, site.distanceFromPathKm);
       }
     }
-  }, [projection, activeLayerId, loading]);
+  }
 
-  // ==========================================
-  // CAMERA DISTANCE
-  // ==========================================
-
-  const getCameraDistance = () => {
-    const camera = viewerRef.current?.camera;
-
-    if (!camera) return null;
-
-    return Cesium.Cartesian3.magnitude(camera.positionWC);
+  return {
+    summary: {
+      distanceKm: km,
+      walkingTime: { seconds, hours: seconds / 3600, formatted: formatDuration(seconds) },
+      evaSols,
+      ascentM,
+      descentM,
+      maxSlopeDeg,
+      temperatureC: { average: km ? tempWeighted / km : 0, min: tMin, max: tMax },
+      surfaces: [...surfaceKm].map(([surface, k]) => ({
+        surface,
+        percent: km ? (k / km) * 100 : 0,
+      })),
+      sitesNearPath: [...sites].map(([name, distanceFromPathKm]) => ({
+        name,
+        distanceFromPathKm,
+      })),
+    },
+    path,
+    positions,
   };
-
-  // ==========================================
-  // 2D MAP HELPERS
-  // ==========================================
-
-  // Visible width of the flat map, in metres
-  const getMapWidth = (camera: Cesium.Camera) => {
-    const frustum = camera.frustum as Cesium.OrthographicOffCenterFrustum;
-
-    const left = frustum.left ?? 0;
-    const right = frustum.right ?? 0;
-
-    return right - left;
-  };
-
-  const pan2D = (direction: "left" | "right" | "up" | "down") => {
-    const camera = viewerRef.current?.camera;
-
-    if (!camera) return;
-
-    const amount = getMapWidth(camera) * 0.1;
-
-    if (direction === "left") camera.moveLeft(amount);
-    if (direction === "right") camera.moveRight(amount);
-    if (direction === "up") camera.moveUp(amount);
-    if (direction === "down") camera.moveDown(amount);
-  };
-
-  // ==========================================
-  // ZOOM IN
-  // ==========================================
-
-  const zoomIn = () => {
-    const camera = viewerRef.current?.camera;
-    const mode = viewerRef.current?.scene.mode;
-
-    if (camera && mode === Cesium.SceneMode.SCENE2D) {
-      camera.zoomIn(getMapWidth(camera) * 0.25);
-      return;
-    }
-
-    if (mode !== Cesium.SceneMode.SCENE3D) return;
-
-    const distance = getCameraDistance();
-
-    if (!camera || distance === null) return;
-
-    const altitude = Math.max(distance - surfaceRadiusRef.current, 100);
-
-    const zoomAmount = Math.max(Math.min(altitude * 0.2, 500_000), 25);
-
-    const maxZoomIn = Math.max(
-      0,
-      distance - surfaceRadiusRef.current - MIN_SURFACE_CLEARANCE,
-    );
-
-    camera.zoomIn(Math.min(zoomAmount, maxZoomIn));
-  };
-
-  // ==========================================
-  // ZOOM OUT
-  // ==========================================
-
-  const zoomOut = () => {
-    const camera = viewerRef.current?.camera;
-    const mode = viewerRef.current?.scene.mode;
-
-    if (camera && mode === Cesium.SceneMode.SCENE2D) {
-      camera.zoomOut(getMapWidth(camera) * 0.33);
-      return;
-    }
-
-    if (mode !== Cesium.SceneMode.SCENE3D) return;
-
-    const distance = getCameraDistance();
-
-    if (!camera || distance === null) return;
-
-    const altitude = Math.max(distance - surfaceRadiusRef.current, 100);
-
-    const zoomAmount = Math.max(Math.min(altitude * 0.3, 500_000), 25);
-
-    camera.zoomOut(zoomAmount);
-  };
-
-  // ==========================================
-  // CAMERA ROTATION BUTTONS
-  // ==========================================
-
-  const rotateLeft = () => {
-    const mode = viewerRef.current?.scene.mode;
-
-    if (mode === Cesium.SceneMode.SCENE2D) return pan2D("left");
-    if (mode !== Cesium.SceneMode.SCENE3D) return;
-
-    viewerRef.current?.camera.rotateLeft(0.2);
-  };
-
-  const rotateRight = () => {
-    const mode = viewerRef.current?.scene.mode;
-
-    if (mode === Cesium.SceneMode.SCENE2D) return pan2D("right");
-    if (mode !== Cesium.SceneMode.SCENE3D) return;
-
-    viewerRef.current?.camera.rotateRight(0.2);
-  };
-
-  const rotateUp = () => {
-    const mode = viewerRef.current?.scene.mode;
-
-    if (mode === Cesium.SceneMode.SCENE2D) return pan2D("up");
-    if (mode !== Cesium.SceneMode.SCENE3D) return;
-
-    viewerRef.current?.camera.rotateUp(0.1);
-  };
-
-  const rotateDown = () => {
-    const mode = viewerRef.current?.scene.mode;
-
-    if (mode === Cesium.SceneMode.SCENE2D) return pan2D("down");
-    if (mode !== Cesium.SceneMode.SCENE3D) return;
-
-    viewerRef.current?.camera.rotateDown(0.1);
-  };
-
-  // ==========================================
-  // RESET CAMERA
-  // ==========================================
-
-  const resetCamera = () => {
-    const viewer = viewerRef.current;
-
-    if (!viewer) return;
-
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(
-        77.58,
-        18.38,
-        4_000_000,
-        Cesium.Ellipsoid.MARS,
-      ),
-
-      duration: 2,
-    });
-
-    setSelectedLocation(null);
-    setFactsOpen(false);
-  };
-
-  // ==========================================
-  // FLY TO LOCATION
-  // ==========================================
-
-  const flyToLocation = (location: MarsLocation) => {
-    const viewer = viewerRef.current;
-
-    if (!viewer) return;
-
-    setSelectedLocation(location);
-    setFactsOpen(!onboardingSkipped);
-
-    viewer.camera.flyTo({
-      destination: Cesium.Cartesian3.fromDegrees(
-        location.longitude,
-        location.latitude,
-        150_000,
-        Cesium.Ellipsoid.MARS,
-      ),
-
-      duration: 2,
-    });
-
-    setMenuOpen(false);
-  };
-
-  // ==========================================
-  // ROUTE PLANNING
-  // ==========================================
-
-  const addStop = (stop: RouteStop) => {
-    setRouteStops((stops) => [...stops, stop]);
-    setRouteError(null);
-  };
-
-  const removeStop = (index: number) => {
-    setRouteStops((stops) => stops.filter((_, i) => i !== index));
-  };
-
-  // Accepts "lat, lon", e.g. "18.38, 77.58"
-  const addCustomStop = () => {
-    const [lat, lon] = customInput.split(",").map((value) => parseFloat(value.trim()));
-
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90) {
-      setRouteError('Enter coordinates like "18.38, 77.58"');
-      return;
-    }
-
-    addStop({
-      name: `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`,
-      latitude: lat,
-      longitude: lon,
-    });
-    setCustomInput("");
-  };
-
-  const clearRoute = () => {
-    const viewer = viewerRef.current;
-
-    if (viewer && !viewer.isDestroyed()) clearMarsPath(viewer);
-
-    setRouteStops([]);
-    setRouteResult(null);
-    setRouteError(null);
-  };
-
-  const findRoute = async () => {
-    const viewer = viewerRef.current;
-
-    if (!viewer || viewer.isDestroyed() || routeStops.length < 2) return;
-
-    setRouteLoading(true);
-    setRouteError(null);
-
-    try {
-      const result = await fetchMarsRoute(routeStops);
-
-      if (viewer.isDestroyed()) return;
-
-      drawMarsPath(viewer, result);
-      setRouteResult(result);
-      setMenuOpen(false);
-    } catch (err) {
-      setRouteError(err instanceof Error ? err.message : "Could not find a path.");
-    } finally {
-      setRouteLoading(false);
-    }
-  };
-
-  // ==========================================
-  // USER INTERFACE
-  // ==========================================
-
-  return (
-    <main className="relative h-screen w-full overflow-hidden bg-[#080b16] text-white">
-      {/* Cesium viewer */}
-      <div ref={containerRef} className="absolute inset-0" />
-
-      {/* Header */}
-      <header className="absolute left-5 top-5 z-10">
-        <h1 style={{ fontFamily: "'Gaegu', cursive", fontSize: "1.6rem", color: "white" }}>
-          Mission: Mars
-        </h1>
-      </header>
-
-      {/* Mute: only while a voiced dialogue is on screen */}
-      {(dialogueOpen || menuDialogueOpen || factsOpen) && !onboardingSkipped && (
-        <MuteButton style={{ position: "absolute", top: 16, right: 96, zIndex: 30 }} />
-      )}
-
-      {/* Hamburger button */}
-      <button
-        type="button"
-        onClick={() => {
-          setMenuOpen((open) => !open);
-          if (menuHint) {
-            setMenuHint(false);
-            setMenuDialogueOpen(true);
-          }
-        }}
-        aria-label={menuOpen ? "Close menu" : "Open menu"}
-        aria-expanded={menuOpen}
-        className="crayon absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] transition hover:scale-105"
-      >
-        <span className={`inline-block transition-transform ${menuOpen ? "rotate-180" : ""}`}>
-          <RocketIcon size={36} />
-        </span>
-      </button>
-
-      {/* Menu hint: points at the hamburger after the dialogue */}
-      {menuHint && !menuOpen && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute right-5 top-[72px] z-30 flex w-12 flex-col items-center text-white"
-          style={{ fontFamily: "MainFont, sans-serif", animation: "menuHintBounce 1s ease-in-out infinite" }}
-        >
-          <PointerIcon />
-          <span className="mt-1 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}>menu</span>
-        </div>
-      )}
-
-      {/* Backdrop */}
-      {menuOpen && (
-        <button
-          type="button"
-          aria-label="Close menu backdrop"
-          onClick={() => setMenuOpen(false)}
-          className="absolute inset-0 z-20 bg-black/40"
-        />
-      )}
-
-      {/* Navigation drawer */}
-      <aside
-        style={{ fontFamily: "'Nanum Pen Script', 'Segoe Print', cursive" }}
-        className={`crayon absolute right-0 top-0 z-20 flex h-full w-64 flex-col border-l-[3px] border-[#1c1c3a] bg-[#f4ead5] text-[#1c1c3a] transition-transform duration-300 ${
-          menuOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-        aria-hidden={!menuOpen}
-      >
-        <div className="flex flex-1 flex-col overflow-y-auto px-5 pt-20 pb-6">
-          <h2 className="mb-3 text-base text-[#1c1c3a]/70">Layers</h2>
-          <ul className="mb-6 flex flex-col">
-            {MARS_LAYERS.map((layer) => {
-              const active = activeLayerId === layer.id;
-              return (
-                <li key={layer.id}>
-                  <button
-                    type="button"
-                    onClick={() => setActiveLayerId(layer.id)}
-                    disabled={loading}
-                    className={`w-full border-b-2 border-dashed border-[#1c1c3a]/40 py-2.5 text-left text-xl transition-colors disabled:opacity-40 ${
-                      active ? "font-bold text-[#1c1c3a]" : "text-[#1c1c3a]/70 hover:text-[#1c1c3a]"
-                    }`}
-                  >
-                    {active && <span className="mr-2">•</span>}
-                    {layer.name}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-
-          <h2 className="mb-3 text-base text-[#1c1c3a]/70">Route</h2>
-          <div className="mb-6">
-            {routeStops.length === 0 && (
-              <p className="mb-2 text-lg text-[#1c1c3a]/60">
-                Add 2 or more places with the + buttons below.
-              </p>
-            )}
-
-            <ol className="mb-2 flex flex-col">
-              {routeStops.map((stop, i) => (
-                <li
-                  key={`${stop.name}-${i}`}
-                  className="flex items-center justify-between border-b-2 border-dashed border-[#1c1c3a]/40 py-1.5 text-xl"
-                >
-                  <span>
-                    {i + 1}. {stop.name}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeStop(i)}
-                    aria-label={`Remove ${stop.name}`}
-                    className="px-2 text-[#1c1c3a]/70 hover:text-[#1c1c3a]"
-                  >
-                    ×
-                  </button>
-                </li>
-              ))}
-            </ol>
-
-            <div className="mb-2 flex gap-1">
-              <input
-                value={customInput}
-                onChange={(e) => setCustomInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addCustomStop()}
-                placeholder="lat, lon"
-                className="min-w-0 flex-1 rounded-md border-2 border-[#1c1c3a]/60 bg-transparent px-2 py-1 text-lg"
-              />
-              <button
-                type="button"
-                onClick={addCustomStop}
-                className="rounded-md border-2 border-[#1c1c3a] px-2 text-lg"
-              >
-                Add
-              </button>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={findRoute}
-                disabled={loading || routeLoading || routeStops.length < 2}
-                className="flex-1 rounded-md border-[3px] border-[#1c1c3a] py-1 text-xl disabled:opacity-30"
-              >
-                {routeLoading ? "Finding…" : "Find path"}
-              </button>
-              {(routeStops.length > 0 || routeResult) && (
-                <button
-                  type="button"
-                  onClick={clearRoute}
-                  className="rounded-md border-[3px] border-[#1c1c3a] px-3 py-1 text-xl"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
-
-            {routeError && <p className="mt-2 text-base text-red-700">{routeError}</p>}
-
-            {routeResult && (
-              <div className="mt-3 text-lg text-[#1c1c3a]/80">
-                <p>
-                  {routeResult.summary.distanceKm.toFixed(1)} km · {routeResult.summary.walkingTime.formatted}
-                </p>
-                <p>
-                  {routeResult.summary.evaSols.toFixed(1)} sols of EVA · max slope{" "}
-                  {routeResult.summary.maxSlopeDeg.toFixed(1)}°
-                </p>
-                <p>
-                  ↑{Math.round(routeResult.summary.ascentM)} m ↓{Math.round(routeResult.summary.descentM)} m
-                </p>
-              </div>
-            )}
-          </div>
-
-          <h2 className="mb-3 text-base text-[#1c1c3a]/70">Locations</h2>
-          <ul className="flex flex-col">
-            {MARS_LOCATIONS.map((location) => {
-              const active = selectedLocation?.name === location.name;
-              return (
-                <li
-                  key={location.name}
-                  className="flex items-center border-b-2 border-dashed border-[#1c1c3a]/40"
-                >
-                  <button
-                    type="button"
-                    onClick={() => flyToLocation(location)}
-                    disabled={loading}
-                    className={`flex-1 py-2.5 text-left text-xl transition-colors disabled:opacity-40 ${
-                      active ? "font-bold text-[#1c1c3a]" : "text-[#1c1c3a]/70 hover:text-[#1c1c3a]"
-                    }`}
-                  >
-                    {active && <span className="mr-2">•</span>}
-                    {location.name}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      addStop({
-                        name: location.name,
-                        latitude: location.latitude,
-                        longitude: location.longitude,
-                      })
-                    }
-                    disabled={loading}
-                    aria-label={`Add ${location.name} to route`}
-                    title="Add to route"
-                    className="px-2 text-2xl text-[#1c1c3a]/70 hover:text-[#1c1c3a] disabled:opacity-40"
-                  >
-                    +
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </aside>
-
-      {/* Bottom-left: selected location + move controls */}
-      <div
-        style={{ fontFamily: "MainFont, sans-serif" }}
-        className="absolute bottom-6 left-5 z-10 flex flex-col items-start gap-2 text-neutral-900"
-      >
-        {/* Selected location */}
-        {selectedLocation && !factsOpen && (
-          <div className="crayon max-w-xs rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] p-4 text-[#1c1c3a]">
-            <h2 className="text-xl">{selectedLocation.name}</h2>
-            <p className="mt-1 text-base text-[#1c1c3a]/70">{selectedLocation.description}</p>
-            <p className="mt-2 text-sm text-[#1c1c3a]/60">
-              {selectedLocation.latitude.toFixed(2)}°, {selectedLocation.longitude.toFixed(2)}°
-            </p>
-          </div>
-        )}
-
-        {/* Move controls */}
-        <div className="flex flex-col items-center gap-2">
-          {/* Top row: zoom in, reset, zoom out, 2D/3D */}
-          <div className="flex items-center gap-2">
-            <ControlButton onClick={zoomIn} disabled={loading} label="Zoom in"><PlusIcon /></ControlButton>
-            <ControlButton onClick={resetCamera} disabled={loading} label="Reset view"><span className="text-xl">Reset</span></ControlButton>
-            <ControlButton onClick={zoomOut} disabled={loading} label="Zoom out"><MinusIcon /></ControlButton>
-            <ControlButton
-              onClick={() => setProjection((p) => (p === "3D" ? "2D" : "3D"))}
-              disabled={loading}
-              label={projection === "3D" ? "Switch to 2D map" : "Switch to 3D globe"}
-            >
-              <span className="text-xl">{projection === "3D" ? "2D" : "3D"}</span>
-            </ControlButton>
-          </div>
-          {/* Bottom row: left, up, down, right */}
-          <div className="flex items-center gap-2">
-            <ControlButton onClick={rotateLeft} disabled={loading} label="Rotate left"><ArrowIcon direction="left" /></ControlButton>
-            <ControlButton onClick={rotateUp} disabled={loading} label="Tilt up"><ArrowIcon direction="up" /></ControlButton>
-            <ControlButton onClick={rotateDown} disabled={loading} label="Tilt down"><ArrowIcon direction="down" /></ControlButton>
-            <ControlButton onClick={rotateRight} disabled={loading} label="Rotate right"><ArrowIcon direction="right" /></ControlButton>
-          </div>
-        </div>
-      </div>
-
-      {/* Achievement toast */}
-      <style>{`@font-face { font-family: 'MainFont'; src: url('/main.ttf'); } @keyframes menuHintBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } } @keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
-      {achievement && (
-        <img
-          src="/images/achievementinmars.png"
-          alt="Achievement"
-          style={{
-            position: "absolute", top: 1, right: 72, zIndex: 50,
-            width: 600, height: "auto",
-            animation: "achievementIn 0.4s cubic-bezier(0.22,1,0.36,1) forwards",
-          }}
-        />
-      )}
-
-      {/* Post-load dialogue */}
-      {dialogueOpen && <MarsDialogue onDone={() => { setDialogueOpen(false); setMenuHint(true); }} />}
-
-      {/* Dialogue after the menu is first opened from the hint */}
-      {menuDialogueOpen && (
-        <MarsDialogue gifs={["/dialogues/mars/6.gif"]} onDone={() => setMenuDialogueOpen(false)} />
-      )}
-
-      {/* Location facts, Ren'Py style */}
-      {factsOpen && !onboardingSkipped && selectedLocation && !dialogueOpen && !menuDialogueOpen && (
-        <LocationDialogue
-          key={selectedLocation.name}
-          title={selectedLocation.name}
-          lines={LOCATION_FACTS[selectedLocation.name] ?? [selectedLocation.description]}
-          onDone={() => setFactsOpen(false)}
-        />
-      )}
-
-      {/* Skip onboarding */}
-      {onboardingActive && !onboardingSkipped && (
-        <button
-          type="button"
-          onClick={skipOnboarding}
-          style={{ fontFamily: "MainFont, sans-serif" }}
-          className="absolute left-1/2 top-5 z-40 -translate-x-1/2 rounded-md border border-white/60 bg-black/50 px-4 py-1.5 text-sm text-white hover:bg-black/70"
-        >
-          Skip onboarding
-        </button>
-      )}
-
-      {/* Loading overlay */}
-      {!loaderDone && <MarsLoader ready={!loading} onFinish={() => setLoaderDone(true)} />}
-
-      {/* Error overlay */}
-      {error && !loading && (
-        <div className="absolute inset-x-5 bottom-5 z-50 mx-auto max-w-lg rounded-xl border border-red-500/30 bg-[#25151b] p-4">
-          <p className="font-semibold text-red-400">Unable to load Mars</p>
-
-          <p className="mt-2 break-words text-sm text-gray-300">{error}</p>
-        </div>
-      )}
-    </main>
+}
+
+// Plans a route through 2 or more places: one API call per consecutive pair,
+// merged into a single result.
+export async function fetchMarsRoute(
+  stops: RouteStop[],
+  options: PathOptions = {},
+): Promise<PathResult> {
+  if (stops.length < 2) throw new Error("Pick at least 2 places.");
+
+  const legs = await Promise.all(
+    stops.slice(0, -1).map((from, i) => {
+      const to = stops[i + 1];
+      return fetchMarsPath(
+        { latitude: from.latitude, longitude: from.longitude },
+        { latitude: to.latitude, longitude: to.longitude },
+        options,
+      );
+    }),
   );
+
+  return mergePathResults(legs);
+}
+
+// ==========================================
+// DRAWING
+// ==========================================
+
+export function clearMarsPath(viewer: Cesium.Viewer) {
+  viewer.entities.removeById(PATH_ENTITY_ID);
+}
+
+// Draws the route clamped to whatever surface is showing (3D tileset or the
+// imagery globe). The API's elevations belong to its own terrain model, so the
+// line is clamped to the ground rather than placed at those heights.
+export function drawMarsPath(viewer: Cesium.Viewer, result: PathResult) {
+  clearMarsPath(viewer);
+
+  const entity = viewer.entities.add({
+    id: PATH_ENTITY_ID,
+    polyline: {
+      positions: Cesium.Cartesian3.fromDegreesArray(result.positions, Cesium.Ellipsoid.MARS),
+      width: 4,
+      clampToGround: true,
+      classificationType: Cesium.ClassificationType.BOTH,
+      material: Cesium.Color.fromCssColorString("#ffb74d"),
+    },
+  });
+
+  viewer.flyTo(entity, { duration: 2 });
 }
