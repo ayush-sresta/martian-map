@@ -23,6 +23,9 @@ const MARS_RADIUS = 3_396_190;
 // Closest the camera may get to the real (tiled) surface, in metres.
 const MIN_SURFACE_CLEARANCE = 200;
 
+// Seconds for the 2D <-> 3D morph. Set to 0 for an instant switch.
+const MORPH_DURATION = 2;
+
 const MARS_LOCATIONS = [
   {
     name: "Jezero Crater",
@@ -119,6 +122,44 @@ const MARS_LOCATIONS = [
 type MarsLocation = (typeof MARS_LOCATIONS)[number];
 
 // ==========================================
+// MAP LAYERS
+// ==========================================
+// "surface" is the original 3D tileset. Every other layer is NASA Mars Trek
+// imagery (equirectangular WMTS) draped on a smooth Mars globe.
+// Add more by appending an entry with a Trek tile URL.
+
+type MarsLayer = {
+  id: string;
+  name: string;
+  url: string | null;
+  maximumLevel: number;
+  credit?: string;
+};
+
+const MARS_LAYERS: MarsLayer[] = [
+  {
+    id: "surface",
+    name: "3D Surface",
+    url: null,
+    maximumLevel: 0,
+  },
+  {
+    id: "mola",
+    name: "MOLA Color Shaded",
+    url: "https://trek.nasa.gov/tiles/Mars/EQ/Mars_MGS_MOLA_ClrShade_merge_global_463m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg",
+    maximumLevel: 7,
+    credit: "NASA/JPL/MGS MOLA",
+  },
+  {
+    id: "viking",
+    name: "Viking Color Mosaic",
+    url: "https://trek.nasa.gov/tiles/Mars/EQ/Mars_Viking_MDIM21_ClrMosaic_global_232m/1.0.0/default/default028mm/{z}/{y}/{x}.jpg",
+    maximumLevel: 8,
+    credit: "NASA/JPL/USGS Viking MDIM 2.1",
+  },
+];
+
+// ==========================================
 // HELPER COMPONENTS FOR BUTTONS
 // ==========================================
 
@@ -147,6 +188,7 @@ function ControlButton({
       onClick={onClick}
       disabled={disabled}
       aria-label={label}
+      title={label}
       className="flex h-10 min-w-[40px] items-center justify-center px-3 text-sm text-white transition hover:bg-orange-500 disabled:opacity-40"
     >
       {children}
@@ -186,6 +228,7 @@ function rotateVector(
 export default function MarsGlobe() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
+  const tilesetRef = useRef<Cesium.Cesium3DTileset | null>(null);
   // Radius of the actual terrain under the camera (Mars is far from a perfect sphere:
   // poles ~20 km low, volcanoes 20+ km high). Updated by the surface probe.
   const surfaceRadiusRef = useRef(MARS_RADIUS);
@@ -200,6 +243,8 @@ export default function MarsGlobe() {
   const [menuHint, setMenuHint] = useState(false);
   const [factsOpen, setFactsOpen] = useState(false);
   const [onboardingSkipped, setOnboardingSkipped] = useState(false);
+  const [projection, setProjection] = useState<"3D" | "2D">("3D");
+  const [activeLayerId, setActiveLayerId] = useState("surface");
 
   // Turn off every dialogue, hint and toast for the rest of the session
   const skipOnboarding = () => {
@@ -265,6 +310,14 @@ export default function MarsGlobe() {
 
         Cesium.Ion.defaultAccessToken = token;
 
+        // Mars globe that carries the imagery layers (and the flat 2D map).
+        // Hidden while the 3D tileset surface is showing.
+        const marsGlobe = new Cesium.Globe(Cesium.Ellipsoid.MARS);
+        marsGlobe.show = false;
+        marsGlobe.showGroundAtmosphere = false;
+        marsGlobe.depthTestAgainstTerrain = true;
+        marsGlobe.baseColor = Cesium.Color.fromCssColorString("#080b16");
+
         viewer = new Cesium.Viewer(containerRef.current, {
           animation: false,
           timeline: false,
@@ -276,9 +329,13 @@ export default function MarsGlobe() {
           baseLayerPicker: false,
           infoBox: false,
           selectionIndicator: false,
-          scene3DOnly: true,
+          // Needed so the scene can morph between 3D and the flat 2D map
+          scene3DOnly: false,
+          mapProjection: new Cesium.GeographicProjection(Cesium.Ellipsoid.MARS),
           baseLayer: false,
-          globe: false,
+          globe: marsGlobe,
+          // Keep Earth's blue sky halo off Mars
+          skyAtmosphere: false,
           // Render at the screen's real pixel density (sharper on HiDPI displays)
           useBrowserRecommendedResolution: false,
           msaaSamples: 4,
@@ -350,6 +407,15 @@ export default function MarsGlobe() {
             return;
           }
 
+          // Custom globe rotation is 3D only; the flat 2D map uses Cesium's own panning.
+          if (
+            !viewer ||
+            viewer.isDestroyed() ||
+            viewer.scene.mode !== Cesium.SceneMode.SCENE3D
+          ) {
+            return;
+          }
+
           isDragging = true;
 
           lastX = event.clientX;
@@ -365,7 +431,12 @@ export default function MarsGlobe() {
         // --------------------------------------
 
         handlePointerMove = (event: PointerEvent) => {
-          if (!isDragging || !viewer || viewer.isDestroyed()) {
+          if (
+            !isDragging ||
+            !viewer ||
+            viewer.isDestroyed() ||
+            viewer.scene.mode !== Cesium.SceneMode.SCENE3D
+          ) {
             return;
           }
 
@@ -400,7 +471,8 @@ export default function MarsGlobe() {
 
           const horizontalAngle = -deltaX * sensitivity;
 
-          const verticalAngle = deltaY * sensitivity;
+          // Vertical drag direction (inverted).
+          const verticalAngle = -deltaY * sensitivity;
 
           // ------------------------------------
           // GET CAMERA VECTORS
@@ -489,9 +561,16 @@ export default function MarsGlobe() {
         // ======================================
 
         handleWheel = (event: WheelEvent) => {
-          event.preventDefault();
+          // Custom zoom is 3D only; the flat 2D map uses Cesium's own wheel zoom.
+          if (
+            !viewer ||
+            viewer.isDestroyed() ||
+            viewer.scene.mode !== Cesium.SceneMode.SCENE3D
+          ) {
+            return;
+          }
 
-          if (!viewer || viewer.isDestroyed()) return;
+          event.preventDefault();
 
           const camera = viewer.camera;
 
@@ -570,6 +649,8 @@ export default function MarsGlobe() {
 
         viewer.scene.primitives.add(mars);
 
+        tilesetRef.current = mars;
+
         // ======================================
         // SURFACE COLLISION
         // ======================================
@@ -580,6 +661,9 @@ export default function MarsGlobe() {
         let probeFrame = 0;
 
         viewer.scene.preRender.addEventListener((scene) => {
+          // The probe works in 3D world space only (not the flat 2D map / morphs).
+          if (scene.mode !== Cesium.SceneMode.SCENE3D) return;
+
           if (probeFrame++ % 3 !== 0) return;
 
           const camera = scene.camera;
@@ -590,16 +674,31 @@ export default function MarsGlobe() {
             return;
           }
 
-          const down = Cesium.Cartesian3.negate(
-            Cesium.Cartesian3.normalize(camera.positionWC, new Cesium.Cartesian3()),
-            new Cesium.Cartesian3(),
-          );
+          let groundRadius: number;
 
-          const hit = scene.pickFromRay(new Cesium.Ray(camera.positionWC, down));
+          if (mars.show) {
+            const down = Cesium.Cartesian3.negate(
+              Cesium.Cartesian3.normalize(camera.positionWC, new Cesium.Cartesian3()),
+              new Cesium.Cartesian3(),
+            );
 
-          if (!hit?.position) return;
+            const hit = scene.pickFromRay(new Cesium.Ray(camera.positionWC, down));
 
-          const groundRadius = Cesium.Cartesian3.magnitude(hit.position);
+            if (!hit?.position) return;
+
+            groundRadius = Cesium.Cartesian3.magnitude(hit.position);
+          } else {
+            // Imagery layers sit on the smooth Mars ellipsoid
+            const ground = Cesium.Ellipsoid.MARS.scaleToGeodeticSurface(
+              camera.positionWC,
+              new Cesium.Cartesian3(),
+            );
+
+            if (!ground) return;
+
+            groundRadius = Cesium.Cartesian3.magnitude(ground);
+          }
+
           surfaceRadiusRef.current = groundRadius;
 
           const minDistance = groundRadius + MIN_SURFACE_CLEARANCE;
@@ -741,8 +840,73 @@ export default function MarsGlobe() {
       }
 
       viewerRef.current = null;
+      tilesetRef.current = null;
     };
   }, []);
+
+  // ==========================================
+  // PROJECTION (2D / 3D) + MAP LAYERS
+  // ==========================================
+
+  useEffect(() => {
+    const viewer = viewerRef.current;
+    const tileset = tilesetRef.current;
+
+    if (loading || !viewer || viewer.isDestroyed() || !tileset) return;
+
+    const scene = viewer.scene;
+    const globe = scene.globe;
+    const controller = scene.screenSpaceCameraController;
+
+    // The "3D Surface" tileset only exists in 3D; the flat map always needs
+    // imagery, so it falls back to the first imagery layer.
+    const selected = MARS_LAYERS.find((layer) => layer.id === activeLayerId);
+    const imagery =
+      selected?.url
+        ? selected
+        : projection === "2D"
+          ? MARS_LAYERS.find((layer) => layer.url)
+          : undefined;
+
+    globe.imageryLayers.removeAll();
+
+    if (imagery?.url) {
+      globe.imageryLayers.addImageryProvider(
+        new Cesium.UrlTemplateImageryProvider({
+          url: imagery.url,
+          tilingScheme: new Cesium.GeographicTilingScheme({
+            ellipsoid: Cesium.Ellipsoid.MARS,
+          }),
+          maximumLevel: imagery.maximumLevel,
+          credit: imagery.credit,
+        }),
+      );
+    }
+
+    globe.show = !!imagery;
+    tileset.show = !imagery;
+
+    if (projection === "2D") {
+      // Flat map: use Cesium's own pan + wheel zoom
+      controller.enableTranslate = true;
+      controller.zoomEventTypes = [
+        Cesium.CameraEventType.WHEEL,
+        Cesium.CameraEventType.PINCH,
+      ];
+
+      if (scene.mode !== Cesium.SceneMode.SCENE2D) {
+        scene.morphTo2D(MORPH_DURATION);
+      }
+    } else {
+      // Globe: back to the custom rotation / wheel zoom
+      controller.enableTranslate = false;
+      controller.zoomEventTypes = [Cesium.CameraEventType.PINCH];
+
+      if (scene.mode !== Cesium.SceneMode.SCENE3D) {
+        scene.morphTo3D(MORPH_DURATION);
+      }
+    }
+  }, [projection, activeLayerId, loading]);
 
   // ==========================================
   // CAMERA DISTANCE
@@ -757,11 +921,44 @@ export default function MarsGlobe() {
   };
 
   // ==========================================
+  // 2D MAP HELPERS
+  // ==========================================
+
+  // Visible width of the flat map, in metres
+  const getMapWidth = (camera: Cesium.Camera) => {
+    const frustum = camera.frustum as Cesium.OrthographicOffCenterFrustum;
+
+    return frustum.right - frustum.left;
+  };
+
+  const pan2D = (direction: "left" | "right" | "up" | "down") => {
+    const camera = viewerRef.current?.camera;
+
+    if (!camera) return;
+
+    const amount = getMapWidth(camera) * 0.1;
+
+    if (direction === "left") camera.moveLeft(amount);
+    if (direction === "right") camera.moveRight(amount);
+    if (direction === "up") camera.moveUp(amount);
+    if (direction === "down") camera.moveDown(amount);
+  };
+
+  // ==========================================
   // ZOOM IN
   // ==========================================
 
   const zoomIn = () => {
     const camera = viewerRef.current?.camera;
+    const mode = viewerRef.current?.scene.mode;
+
+    if (camera && mode === Cesium.SceneMode.SCENE2D) {
+      camera.zoomIn(getMapWidth(camera) * 0.25);
+      return;
+    }
+
+    if (mode !== Cesium.SceneMode.SCENE3D) return;
+
     const distance = getCameraDistance();
 
     if (!camera || distance === null) return;
@@ -784,6 +981,15 @@ export default function MarsGlobe() {
 
   const zoomOut = () => {
     const camera = viewerRef.current?.camera;
+    const mode = viewerRef.current?.scene.mode;
+
+    if (camera && mode === Cesium.SceneMode.SCENE2D) {
+      camera.zoomOut(getMapWidth(camera) * 0.33);
+      return;
+    }
+
+    if (mode !== Cesium.SceneMode.SCENE3D) return;
+
     const distance = getCameraDistance();
 
     if (!camera || distance === null) return;
@@ -800,18 +1006,38 @@ export default function MarsGlobe() {
   // ==========================================
 
   const rotateLeft = () => {
+    const mode = viewerRef.current?.scene.mode;
+
+    if (mode === Cesium.SceneMode.SCENE2D) return pan2D("left");
+    if (mode !== Cesium.SceneMode.SCENE3D) return;
+
     viewerRef.current?.camera.rotateLeft(0.2);
   };
 
   const rotateRight = () => {
+    const mode = viewerRef.current?.scene.mode;
+
+    if (mode === Cesium.SceneMode.SCENE2D) return pan2D("right");
+    if (mode !== Cesium.SceneMode.SCENE3D) return;
+
     viewerRef.current?.camera.rotateRight(0.2);
   };
 
   const rotateUp = () => {
+    const mode = viewerRef.current?.scene.mode;
+
+    if (mode === Cesium.SceneMode.SCENE2D) return pan2D("up");
+    if (mode !== Cesium.SceneMode.SCENE3D) return;
+
     viewerRef.current?.camera.rotateUp(0.1);
   };
 
   const rotateDown = () => {
+    const mode = viewerRef.current?.scene.mode;
+
+    if (mode === Cesium.SceneMode.SCENE2D) return pan2D("down");
+    if (mode !== Cesium.SceneMode.SCENE3D) return;
+
     viewerRef.current?.camera.rotateDown(0.1);
   };
 
@@ -954,6 +1180,28 @@ export default function MarsGlobe() {
         aria-hidden={!menuOpen}
       >
         <div className="flex flex-1 flex-col overflow-y-auto px-5 pt-20 pb-6">
+          <h2 className="mb-3 text-xs text-neutral-400">Layers</h2>
+          <ul className="mb-6 flex flex-col">
+            {MARS_LAYERS.map((layer) => {
+              const active = activeLayerId === layer.id;
+              return (
+                <li key={layer.id}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveLayerId(layer.id)}
+                    disabled={loading}
+                    className={`w-full border-b border-neutral-100 py-2.5 text-left text-sm transition-colors disabled:opacity-40 ${
+                      active ? "text-black" : "text-neutral-500 hover:text-black"
+                    }`}
+                  >
+                    {active && <span className="mr-2">•</span>}
+                    {layer.name}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+
           <h2 className="mb-3 text-xs text-neutral-400">Locations</h2>
           <ul className="flex flex-col">
             {MARS_LOCATIONS.map((location) => {
@@ -1008,6 +1256,15 @@ export default function MarsGlobe() {
           <ButtonGroup>
             <ControlButton onClick={zoomOut} disabled={loading} label="Zoom out">−</ControlButton>
             <ControlButton onClick={zoomIn} disabled={loading} label="Zoom in">+</ControlButton>
+          </ButtonGroup>
+          <ButtonGroup>
+            <ControlButton
+              onClick={() => setProjection((p) => (p === "3D" ? "2D" : "3D"))}
+              disabled={loading}
+              label={projection === "3D" ? "Switch to 2D map" : "Switch to 3D globe"}
+            >
+              {projection === "3D" ? "2D" : "3D"}
+            </ControlButton>
           </ButtonGroup>
         </div>
       </div>

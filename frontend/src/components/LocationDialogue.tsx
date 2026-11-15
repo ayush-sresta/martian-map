@@ -1,9 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
-<<<<<<< HEAD
-=======
 import { createSound } from "./sound";
->>>>>>> 601d170f3b9bff1d0dc942949ce50bb54bb9ad5b
 
 const TYPE_SPEED_MS = 28;
 
@@ -33,11 +30,7 @@ export default function LocationDialogue({
 
   // Voice blip per line
   useEffect(() => {
-<<<<<<< HEAD
-    if (!audioRef.current) audioRef.current = new Audio("/audio/astronaut.mp3");
-=======
     if (!audioRef.current) audioRef.current = createSound("/audio/astronaut.mp3");
->>>>>>> 601d170f3b9bff1d0dc942949ce50bb54bb9ad5b
     const audio = audioRef.current;
     audio.currentTime = 0;
     audio.play().catch(() => {});

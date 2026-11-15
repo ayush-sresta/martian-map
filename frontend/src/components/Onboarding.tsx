@@ -221,12 +221,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         </div>
       )}
 
-<<<<<<< HEAD
-=======
       {/* Mute */}
       {!skipped && !fadeOut && <MuteButton style={{ position: "absolute", top: 20, right: 140, zIndex: 20, width: 34, height: 34, borderRadius: 6 }} />}
 
->>>>>>> 601d170f3b9bff1d0dc942949ce50bb54bb9ad5b
       {/* Skip intro */}
       {!skipped && !fadeOut && (
         <button
