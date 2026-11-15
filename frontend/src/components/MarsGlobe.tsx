@@ -790,118 +790,71 @@ export default function MarsGlobe() {
 
       {/* Navigation drawer */}
       <aside
-        className={`absolute right-0 top-0 z-20 h-full w-[320px] max-w-[85vw] border-l border-white/10 bg-[#101525]/95 p-6 pt-24 shadow-2xl backdrop-blur-xl transition-transform duration-300 ${
+        style={{ fontFamily: "MainFont, sans-serif" }}
+        className={`absolute right-0 top-0 z-20 flex h-full w-64 flex-col border-l border-neutral-200 bg-white text-neutral-900 transition-transform duration-300 ${
           menuOpen ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!menuOpen}
       >
-        <div className="flex h-full flex-col gap-8 overflow-y-auto">
-          {/* Camera controls */}
-          <section>
-            <h2 className="mb-4 text-xs font-semibold tracking-[0.2em] text-gray-400">
-              CAMERA CONTROLS
-            </h2>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div />
-
-              <ControlButton onClick={rotateUp} disabled={loading}>
-                ↑
-              </ControlButton>
-
-              <div />
-
-              <ControlButton onClick={rotateLeft} disabled={loading}>
-                ←
-              </ControlButton>
-
-              <ControlButton onClick={resetCamera} disabled={loading}>
-                ⌂
-              </ControlButton>
-
-              <ControlButton onClick={rotateRight} disabled={loading}>
-                →
-              </ControlButton>
-
-              <div />
-
-              <ControlButton onClick={rotateDown} disabled={loading}>
-                ↓
-              </ControlButton>
-
-              <div />
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <ControlButton onClick={zoomIn} disabled={loading}>
-                + Zoom in
-              </ControlButton>
-
-              <ControlButton onClick={zoomOut} disabled={loading}>
-                − Zoom out
-              </ControlButton>
-            </div>
-          </section>
-
-          {/* Mars locations */}
-          <section>
-            <h2 className="mb-4 text-xs font-semibold tracking-[0.2em] text-gray-400">
-              EXPLORE MARS
-            </h2>
-
-            <div className="space-y-2">
-              {MARS_LOCATIONS.map((location) => (
-                <button
-                  key={location.name}
-                  type="button"
-                  onClick={() => flyToLocation(location)}
-                  disabled={loading}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
-                    selectedLocation?.name === location.name
-                      ? "border-orange-500 bg-orange-500/10"
-                      : "border-white/10 bg-white/5 hover:border-orange-500/50 hover:bg-white/10"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  <div className="font-medium">{location.name}</div>
-
-                  <p className="mt-1 text-xs text-gray-400">
-                    {location.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* Footer */}
-          <div className="mt-auto border-t border-white/10 pt-4">
-            <p className="text-xs text-gray-500">MARS EXPLORATION SYSTEM</p>
-
-            <p className="mt-1 text-xs text-gray-600">
-              Navigate the Martian surface.
-            </p>
-          </div>
+        <div className="flex flex-1 flex-col overflow-y-auto px-5 pt-20 pb-6">
+          <h2 className="mb-3 text-xs text-neutral-400">Locations</h2>
+          <ul className="flex flex-col">
+            {MARS_LOCATIONS.map((location) => {
+              const active = selectedLocation?.name === location.name;
+              return (
+                <li key={location.name}>
+                  <button
+                    type="button"
+                    onClick={() => flyToLocation(location)}
+                    disabled={loading}
+                    className={`w-full border-b border-neutral-100 py-2.5 text-left text-sm transition-colors disabled:opacity-40 ${
+                      active ? "text-black" : "text-neutral-500 hover:text-black"
+                    }`}
+                  >
+                    {active && <span className="mr-2">•</span>}
+                    {location.name}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       </aside>
 
-      {/* Selected location */}
-      {selectedLocation && (
-        <div className="absolute bottom-6 left-5 z-10 max-w-xs rounded-xl border border-white/10 bg-[#101525]/90 p-4 backdrop-blur-md">
-          <p className="text-xs font-semibold tracking-widest text-orange-400">
-            SELECTED LOCATION
-          </p>
+      {/* Bottom-left: selected location + move controls */}
+      <div
+        style={{ fontFamily: "MainFont, sans-serif" }}
+        className="absolute bottom-6 left-5 z-10 flex flex-col items-start gap-2 text-neutral-900"
+      >
+        {/* Selected location */}
+        {selectedLocation && (
+          <div className="max-w-xs rounded-lg border border-neutral-200 bg-white p-4">
+            <h2 className="text-base">{selectedLocation.name}</h2>
+            <p className="mt-1 text-sm text-neutral-500">{selectedLocation.description}</p>
+            <p className="mt-2 text-xs text-neutral-400">
+              {selectedLocation.latitude.toFixed(2)}°, {selectedLocation.longitude.toFixed(2)}°
+            </p>
+          </div>
+        )}
 
-          <h2 className="mt-2 text-lg font-bold">{selectedLocation.name}</h2>
-
-          <p className="mt-1 text-sm text-gray-400">
-            {selectedLocation.description}
-          </p>
-
-          <p className="mt-3 text-xs text-gray-500">
-            {selectedLocation.latitude.toFixed(2)}° latitude,{" "}
-            {selectedLocation.longitude.toFixed(2)}° longitude
-          </p>
+        {/* Move controls */}
+        <div className="flex gap-2">
+          <ButtonGroup>
+            <ControlButton onClick={rotateLeft} disabled={loading} label="Rotate left">←</ControlButton>
+            <ControlButton onClick={rotateUp} disabled={loading} label="Tilt up">↑</ControlButton>
+            <ControlButton onClick={rotateDown} disabled={loading} label="Tilt down">↓</ControlButton>
+            <ControlButton onClick={rotateRight} disabled={loading} label="Rotate right">→</ControlButton>
+          </ButtonGroup>
+          <ButtonGroup>
+            <ControlButton onClick={resetCamera} disabled={loading} label="Reset view">Reset</ControlButton>
+          </ButtonGroup>
+          <ButtonGroup>
+            <ControlButton onClick={zoomOut} disabled={loading} label="Zoom out">−</ControlButton>
+            <ControlButton onClick={zoomIn} disabled={loading} label="Zoom in">+</ControlButton>
+          </ButtonGroup>
         </div>
-      )}
+      </div>
+
       {/* Achievement toast */}
       <style>{`@font-face { font-family: 'MainFont'; src: url('/main.ttf'); } @keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
       {achievement && (
@@ -945,21 +898,33 @@ export default function MarsGlobe() {
 // REUSABLE CONTROL BUTTON
 // ==========================================
 
+function ButtonGroup({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex divide-x divide-neutral-200 overflow-hidden rounded bg-white shadow-sm">
+      {children}
+    </div>
+  );
+}
+
 function ControlButton({
   children,
   onClick,
   disabled = false,
+  label,
 }: {
   children: ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  label: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex min-h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-sm transition hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+      aria-label={label}
+      title={label}
+      className="flex h-8 min-w-8 items-center justify-center px-2 text-sm text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200 disabled:opacity-30"
     >
       {children}
     </button>

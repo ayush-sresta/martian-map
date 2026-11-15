@@ -33,10 +33,10 @@ body {
   color: var(--foreground);
 }
 
-*, canvas {
-  cursor: url('/cursor/ArrowCursor.png') 0 8, auto !important;
+html, body, *, canvas {
+  cursor: url('/cursor/ArrowCursor32.png') 15 13, auto !important;
 }
 
 a, button {
-  cursor: url('/cursor/ArrowFarCursor.png') 0 8, auto !important;
+  cursor: url('/cursor/ArrowFarCursor32.png') 16 16, auto !important;
 }
