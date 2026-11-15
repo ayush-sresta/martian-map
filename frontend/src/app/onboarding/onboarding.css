@@ -1,0 +1,377 @@
+/* ── Reset & base ── */
+.vn-root {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  font-family: "Georgia", serif;
+  background: #05070f;
+  color: #fff;
+  user-select: none;
+}
+
+/* ── Background ── */
+.vn-bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 60% 40% at 50% 100%, #1a0a2e 0%, transparent 70%),
+    radial-gradient(ellipse 80% 60% at 50% 80%, #0d1a3a 0%, transparent 80%),
+    linear-gradient(180deg, #05070f 0%, #0a0f1e 40%, #0f1830 70%, #1a0d0d 100%);
+  z-index: 0;
+}
+
+/* ── Stars ── */
+.vn-stars {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.vn-star {
+  position: absolute;
+  border-radius: 50%;
+  background: #fff;
+  animation: starTwinkle var(--dur, 3s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes starTwinkle {
+  0%, 100% { opacity: var(--min-op, 0.3); transform: scale(1); }
+  50%       { opacity: 1;                  transform: scale(1.4); }
+}
+
+/* ── Launch pad ground ── */
+.vn-ground {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: 28%;
+  background: linear-gradient(180deg, #1a1a2e 0%, #0d0d1a 40%, #080810 100%);
+  border-top: 2px solid #2a2a4a;
+  z-index: 2;
+}
+.vn-ground::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 4px;
+  background: linear-gradient(90deg, transparent, #4a3a6a, #6a4a8a, #4a3a6a, transparent);
+  box-shadow: 0 0 20px #6a4a8a88;
+}
+
+/* ── Launch pad platform ── */
+.vn-platform {
+  position: absolute;
+  bottom: 26%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  height: 18px;
+  background: linear-gradient(180deg, #3a3a5a, #1a1a2e);
+  border-radius: 4px 4px 0 0;
+  border: 1px solid #4a4a6a;
+  z-index: 3;
+  box-shadow: 0 0 30px #2a2a4a88, inset 0 1px 0 #5a5a7a;
+}
+.vn-platform::before {
+  content: "";
+  position: absolute;
+  top: 50%; left: 10%; right: 10%;
+  height: 2px;
+  background: repeating-linear-gradient(90deg, #4a4a6a 0px, #4a4a6a 20px, transparent 20px, transparent 30px);
+}
+
+/* ── Rocket ── */
+.vn-rocket-wrap {
+  position: absolute;
+  bottom: 26%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.vn-rocket {
+  width: 70px;
+  filter: drop-shadow(0 0 18px #ff6a0088) drop-shadow(0 0 40px #3a2a6a66);
+  animation: rocketIdle 4s ease-in-out infinite;
+}
+@keyframes rocketIdle {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-6px); }
+}
+
+/* ── Launch lights ── */
+.vn-lights {
+  position: absolute;
+  bottom: 26%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 500px;
+  z-index: 3;
+  pointer-events: none;
+}
+.vn-light {
+  position: absolute;
+  bottom: 0;
+  width: 6px;
+  border-radius: 3px 3px 0 0;
+  animation: lightPulse var(--dur, 2s) ease-in-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes lightPulse {
+  0%, 100% { opacity: 0.4; box-shadow: 0 0 6px var(--col); }
+  50%       { opacity: 1;   box-shadow: 0 0 20px var(--col), 0 0 40px var(--col); }
+}
+
+/* ── Smoke ── */
+.vn-smoke-wrap {
+  position: absolute;
+  bottom: 26%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 200px;
+  height: 120px;
+  z-index: 3;
+  pointer-events: none;
+}
+.vn-smoke {
+  position: absolute;
+  bottom: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, #aaaaaa22 0%, transparent 70%);
+  animation: smokeDrift var(--dur, 4s) ease-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes smokeDrift {
+  0%   { transform: translateY(0) translateX(0) scale(0.5); opacity: 0.5; }
+  100% { transform: translateY(-100px) translateX(var(--dx, 20px)) scale(2.5); opacity: 0; }
+}
+
+/* ── Characters ── */
+.vn-characters {
+  position: absolute;
+  bottom: 28%;
+  left: 0; right: 0;
+  height: 55%;
+  z-index: 5;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding: 0 8%;
+}
+
+.vn-char {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: opacity 0.6s ease, transform 0.6s ease, filter 0.4s ease;
+}
+.vn-char.hidden   { opacity: 0; transform: translateY(30px); pointer-events: none; }
+.vn-char.inactive { opacity: 0.45; filter: brightness(0.6); transform: scale(0.97); }
+.vn-char.active   { opacity: 1;    filter: brightness(1.1);  transform: scale(1.02); }
+
+/* Astronaut SVG bodies */
+.vn-astronaut {
+  width: 130px;
+  height: auto;
+  filter: drop-shadow(0 8px 24px #00000088);
+}
+
+/* ── On-fire astronaut ── */
+.vn-on-fire .vn-astronaut {
+  animation: fireShake 0.15s ease-in-out infinite;
+  filter: drop-shadow(0 0 12px #ff4400) drop-shadow(0 8px 24px #00000088);
+}
+@keyframes fireShake {
+  0%, 100% { transform: rotate(-1deg) translateX(-1px); }
+  50%       { transform: rotate(1deg)  translateX(1px);  }
+}
+
+.vn-flames {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 140px;
+  height: 160px;
+  pointer-events: none;
+}
+.vn-flame {
+  position: absolute;
+  bottom: 10px;
+  border-radius: 50% 50% 20% 20%;
+  animation: flameDance var(--dur, 0.5s) ease-in-out infinite alternate;
+  animation-delay: var(--delay, 0s);
+  transform-origin: bottom center;
+}
+@keyframes flameDance {
+  0%   { transform: scaleX(1)   scaleY(1)   rotate(var(--rot, 0deg)); opacity: 0.9; }
+  100% { transform: scaleX(0.8) scaleY(1.2) rotate(calc(var(--rot, 0deg) * -1)); opacity: 0.6; }
+}
+
+.vn-fire-smoke {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle, #55555544 0%, transparent 70%);
+  animation: fireSmoke var(--dur, 1.2s) ease-out infinite;
+  animation-delay: var(--delay, 0s);
+}
+@keyframes fireSmoke {
+  0%   { transform: translateY(0) scale(0.5); opacity: 0.6; }
+  100% { transform: translateY(-80px) scale(2); opacity: 0; }
+}
+
+/* ── Dialogue box ── */
+.vn-dialogue-wrap {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 30%;
+  z-index: 10;
+  padding: 0 5% 2%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.vn-dialogue-box {
+  background: linear-gradient(180deg, #0a0f2288 0%, #05070fcc 100%);
+  border: 1px solid #2a3a6a;
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  padding: 18px 24px 14px;
+  cursor: pointer;
+  position: relative;
+  box-shadow: 0 -4px 40px #0a0f2266, inset 0 1px 0 #2a3a6a44;
+  transition: border-color 0.3s;
+}
+.vn-dialogue-box:hover { border-color: #4a6aaa; }
+
+.vn-speaker {
+  font-family: "Arial", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.vn-speaker.ast1 { color: #7ab8ff; background: #7ab8ff18; border-left: 3px solid #7ab8ff; }
+.vn-speaker.ast2 { color: #ff7043; background: #ff704318; border-left: 3px solid #ff7043; }
+
+.vn-text {
+  font-size: 1rem;
+  line-height: 1.65;
+  color: #dde4f0;
+  min-height: 3.3em;
+}
+
+.vn-continue {
+  position: absolute;
+  bottom: 12px;
+  right: 18px;
+  font-size: 1.1rem;
+  color: #7ab8ff;
+  animation: continueBlink 1s ease-in-out infinite;
+}
+@keyframes continueBlink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.2; }
+}
+
+/* ── HUD ── */
+.vn-hud {
+  position: absolute;
+  top: 20px; right: 24px;
+  z-index: 10;
+  text-align: right;
+  font-family: "Courier New", monospace;
+  font-size: 0.7rem;
+  color: #4a6a9a;
+  line-height: 1.8;
+}
+.vn-hud-title {
+  font-size: 0.65rem;
+  letter-spacing: 0.2em;
+  color: #2a4a7a;
+  margin-bottom: 4px;
+}
+.vn-hud-status {
+  color: #ff9944;
+  animation: hudBlink 2s ease-in-out infinite;
+}
+@keyframes hudBlink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+/* ── Final screen ── */
+.vn-final {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #05070f;
+  gap: 1.2rem;
+  animation: finalFadeIn 1.2s ease forwards;
+}
+@keyframes finalFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.vn-final-title {
+  font-family: "MainFont", "Georgia", serif;
+  font-size: clamp(2.5rem, 8vw, 5rem);
+  letter-spacing: 0.3em;
+  color: #fff;
+  text-shadow: 0 0 40px #ff6a0066, 0 0 80px #3a2a6a44;
+  animation: titleGlow 3s ease-in-out infinite;
+}
+@keyframes titleGlow {
+  0%, 100% { text-shadow: 0 0 40px #ff6a0066, 0 0 80px #3a2a6a44; }
+  50%       { text-shadow: 0 0 60px #ff6a00aa, 0 0 120px #3a2a6a88; }
+}
+
+.vn-final-sub {
+  font-size: 1rem;
+  color: #7a8aaa;
+  letter-spacing: 0.12em;
+  font-style: italic;
+}
+
+.vn-begin-btn {
+  margin-top: 1.5rem;
+  padding: 0.75rem 2.5rem;
+  background: transparent;
+  border: 1px solid #4a6aaa;
+  color: #7ab8ff;
+  font-family: "Arial", sans-serif;
+  font-size: 0.85rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+.vn-begin-btn:hover {
+  background: #7ab8ff18;
+  border-color: #7ab8ff;
+  box-shadow: 0 0 20px #7ab8ff44;
+}
+
+/* ── Fade overlay ── */
+.vn-fade {
+  position: fixed;
+  inset: 0;
+  background: #05070f;
+  z-index: 15;
+  pointer-events: none;
+  transition: opacity 1s ease;
+}
