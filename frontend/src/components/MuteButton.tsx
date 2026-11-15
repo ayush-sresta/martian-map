@@ -15,7 +15,7 @@ export default function MuteButton({ style }: { style?: CSSProperties }) {
       title={muted ? "Unmute sound" : "Mute sound"}
       className="crayon"
       style={{
-        width: 48, height: 48, display: "flex", alignItems: "center", justifyContent: "center",
+        width: 56, height: 56, display: "flex", alignItems: "center", justifyContent: "center",
         borderRadius: 6, border: "3px solid #1c1c3a",
         background: "#f4ead5", color: "#1c1c3a",
         ...style,

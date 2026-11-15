@@ -23,6 +23,7 @@ function Icon({
   size = 30,
   rotate = 0,
   ink = INK,
+  colourWidth = 4.2,
   style,
 }: {
   layer: Layer;
@@ -30,6 +31,7 @@ function Icon({
   size?: number;
   rotate?: number;
   ink?: string;
+  colourWidth?: number;
   style?: CSSProperties;
 }) {
   return (
@@ -47,7 +49,7 @@ function Icon({
         <g
           transform="translate(0.9 -0.7)"
           stroke={color}
-          strokeWidth={4.2}
+          strokeWidth={colourWidth}
           strokeLinecap="round"
           strokeLinejoin="round"
           fill={layer.closed ? color : "none"}
@@ -109,7 +111,7 @@ export function SpeakerIcon({ muted, color = INK }: { muted: boolean; color?: st
   const body = "M4.4 9.4 C5.8 9.5 7 9.3 8.2 9.5 L12.6 5.4 C12.9 11.8 12.5 14.9 12.8 18.6 L8.2 14.5 C6.8 14.6 5.6 14.4 4.3 14.6 Z";
   const waves = muted
     ? ["M16.2 9.2 L21 14.8", "M21.1 9.1 L16.1 14.9"]
-    : ["M15.6 9 C16.9 10.3 16.9 13.6 15.6 15", "M17.9 6.7 C20.6 9.4 20.6 14.6 17.9 17.3"];
+    : ["M15.2 8.6 C16.9 10.2 16.9 13.8 15.2 15.4", "M18.9 5.8 C21.8 9 21.8 15 18.9 18.2"];
   return <Icon layer={{ paths: [body, ...waves], closed: false }} color={color} />;
 }
 
@@ -126,6 +128,23 @@ export function PointerIcon({ color = INK }: { color?: string }) {
       color={color}
       size={28}
       ink={PAPER}
+    />
+  );
+}
+
+// Upright rocket for the menu button: a solid dark blue silhouette so it reads at button size.
+export function RocketIcon({ size = 36 }: { size?: number }) {
+  return (
+    <Icon
+      layer={{
+        paths: [
+          "M12 2 C15.5 4.5 16.5 9 16.3 14 L19.5 18.5 L16.4 19 L15.8 21.5 L8.2 21.5 L7.6 19 L4.5 18.5 L7.7 14 C7.5 9 8.5 4.5 12 2 Z",
+        ],
+        closed: true,
+      }}
+      color={INK}
+      size={size}
+      colourWidth={1.5}
     />
   );
 }

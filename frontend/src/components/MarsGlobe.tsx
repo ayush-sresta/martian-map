@@ -5,7 +5,7 @@ import { createSound } from "./sound";
 import MuteButton from "./MuteButton";
 import MarsLoader from "./MarsLoader";
 import LocationDialogue from "./LocationDialogue";
-import { ArrowIcon, MinusIcon, PlusIcon, PointerIcon } from "./CrayonIcon";
+import { ArrowIcon, MinusIcon, PlusIcon, PointerIcon, RocketIcon } from "./CrayonIcon";
 import { LOCATION_FACTS } from "./locationFacts";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -843,14 +843,14 @@ export default function MarsGlobe() {
 
       {/* Header */}
       <header className="absolute left-5 top-5 z-10">
-        <h1 style={{ fontFamily: "MainFont, sans-serif", fontSize: "1.6rem", color: "white" }}>
+        <h1 style={{ fontFamily: "'Gaegu', cursive", fontSize: "1.6rem", color: "white" }}>
           Mission: Mars
         </h1>
       </header>
 
       {/* Mute: only while a voiced dialogue is on screen */}
       {(dialogueOpen || menuDialogueOpen || factsOpen) && !onboardingSkipped && (
-        <MuteButton style={{ position: "absolute", top: 20, right: 80, zIndex: 30 }} />
+        <MuteButton style={{ position: "absolute", top: 16, right: 96, zIndex: 30 }} />
       )}
 
       {/* Hamburger button */}
@@ -867,11 +867,9 @@ export default function MarsGlobe() {
         aria-expanded={menuOpen}
         className="crayon absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] transition hover:scale-105"
       >
-        <img
-          src="/images/rocket.png"
-          alt=""
-          className={`wax h-9 w-auto transition-transform ${menuOpen ? "rotate-180" : ""}`}
-        />
+        <span className={`inline-block transition-transform ${menuOpen ? "rotate-180" : ""}`}>
+          <RocketIcon size={36} />
+        </span>
       </button>
 
       {/* Menu hint: points at the hamburger after the dialogue */}
@@ -898,14 +896,14 @@ export default function MarsGlobe() {
 
       {/* Navigation drawer */}
       <aside
-        style={{ fontFamily: "MainFont, sans-serif" }}
-        className={`absolute right-0 top-0 z-20 flex h-full w-64 flex-col border-l border-neutral-200 bg-white text-neutral-900 transition-transform duration-300 ${
+        style={{ fontFamily: "'Nanum Pen Script', 'Segoe Print', cursive" }}
+        className={`crayon absolute right-0 top-0 z-20 flex h-full w-64 flex-col border-l-[3px] border-[#1c1c3a] bg-[#f4ead5] text-[#1c1c3a] transition-transform duration-300 ${
           menuOpen ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!menuOpen}
       >
         <div className="flex flex-1 flex-col overflow-y-auto px-5 pt-20 pb-6">
-          <h2 className="mb-3 text-xs text-neutral-400">Locations</h2>
+          <h2 className="mb-3 text-base text-[#1c1c3a]/70">Locations</h2>
           <ul className="flex flex-col">
             {MARS_LOCATIONS.map((location) => {
               const active = selectedLocation?.name === location.name;
@@ -915,8 +913,8 @@ export default function MarsGlobe() {
                     type="button"
                     onClick={() => flyToLocation(location)}
                     disabled={loading}
-                    className={`w-full border-b border-neutral-100 py-2.5 text-left text-sm transition-colors disabled:opacity-40 ${
-                      active ? "text-black" : "text-neutral-500 hover:text-black"
+                    className={`w-full border-b-2 border-dashed border-[#1c1c3a]/40 py-2.5 text-left text-xl transition-colors disabled:opacity-40 ${
+                      active ? "font-bold text-[#1c1c3a]" : "text-[#1c1c3a]/70 hover:text-[#1c1c3a]"
                     }`}
                   >
                     {active && <span className="mr-2">•</span>}
@@ -936,10 +934,10 @@ export default function MarsGlobe() {
       >
         {/* Selected location */}
         {selectedLocation && !factsOpen && (
-          <div className="max-w-xs rounded-lg border border-neutral-200 bg-white p-4">
+          <div className="crayon max-w-xs rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] p-4 text-[#1c1c3a]">
             <h2 className="text-xl">{selectedLocation.name}</h2>
-            <p className="mt-1 text-base text-neutral-500">{selectedLocation.description}</p>
-            <p className="mt-2 text-sm text-neutral-400">
+            <p className="mt-1 text-base text-[#1c1c3a]/70">{selectedLocation.description}</p>
+            <p className="mt-2 text-sm text-[#1c1c3a]/60">
               {selectedLocation.latitude.toFixed(2)}°, {selectedLocation.longitude.toFixed(2)}°
             </p>
           </div>
