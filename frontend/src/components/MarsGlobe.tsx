@@ -1,6 +1,8 @@
 "use client";
 
 import MarsDialogue from "./MarsDialogue";
+import LocationDialogue from "./LocationDialogue";
+import { LOCATION_FACTS } from "./locationFacts";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import * as Cesium from "cesium";
@@ -149,6 +151,8 @@ export default function MarsGlobe() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [achievement, setAchievement] = useState(false);
   const [dialogueOpen, setDialogueOpen] = useState(false);
+  const [menuDialogueOpen, setMenuDialogueOpen] = useState(false);
+  const [factsOpen, setFactsOpen] = useState(false);
   const [menuHint, setMenuHint] = useState(false);
 
   // Show achievement when Mars finishes loading
@@ -710,6 +714,7 @@ export default function MarsGlobe() {
     });
 
     setSelectedLocation(null);
+    setFactsOpen(false);
   };
 
   // ==========================================
@@ -722,6 +727,7 @@ export default function MarsGlobe() {
     if (!viewer) return;
 
     setSelectedLocation(location);
+    setFactsOpen(true);
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
@@ -756,7 +762,13 @@ export default function MarsGlobe() {
       {/* Hamburger button */}
       <button
         type="button"
-        onClick={() => { setMenuOpen((open) => !open); setMenuHint(false); }}
+        onClick={() => {
+          setMenuOpen((open) => !open);
+          if (menuHint) {
+            setMenuHint(false);
+            setMenuDialogueOpen(true);
+          }
+        }}
         aria-label={menuOpen ? "Close menu" : "Open menu"}
         aria-expanded={menuOpen}
         className="absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#151a2a]/90 backdrop-blur-md transition hover:bg-orange-500"
@@ -845,7 +857,7 @@ export default function MarsGlobe() {
         className="absolute bottom-6 left-5 z-10 flex flex-col items-start gap-2 text-neutral-900"
       >
         {/* Selected location */}
-        {selectedLocation && (
+        {selectedLocation && !factsOpen && (
           <div className="max-w-xs rounded-lg border border-neutral-200 bg-white p-4">
             <h2 className="text-base">{selectedLocation.name}</h2>
             <p className="mt-1 text-sm text-neutral-500">{selectedLocation.description}</p>
@@ -889,6 +901,21 @@ export default function MarsGlobe() {
 
       {/* Post-load dialogue */}
       {dialogueOpen && <MarsDialogue onDone={() => { setDialogueOpen(false); setMenuHint(true); }} />}
+
+      {/* Dialogue after the menu is first opened from the hint */}
+      {menuDialogueOpen && (
+        <MarsDialogue gifs={["/dialogues/mars/6.gif"]} onDone={() => setMenuDialogueOpen(false)} />
+      )}
+
+      {/* Location facts, Ren'Py style */}
+      {factsOpen && selectedLocation && !dialogueOpen && !menuDialogueOpen && (
+        <LocationDialogue
+          key={selectedLocation.name}
+          title={selectedLocation.name}
+          lines={LOCATION_FACTS[selectedLocation.name] ?? [selectedLocation.description]}
+          onDone={() => setFactsOpen(false)}
+        />
+      )}
 
       {/* Loading overlay */}
       {loading && (

@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-const GIFS = [
+export const INTRO_GIFS = [
   "/dialogues/mars/1.gif",
   "/dialogues/mars/2.gif",
   "/dialogues/mars/3.gif",
@@ -11,7 +11,13 @@ const GIFS = [
 
 // Ren'Py-style dialogue shown over the globe once Mars has loaded.
 // Same look as the onboarding dialogue: gif box near the bottom, sprite bottom-right.
-export default function MarsDialogue({ onDone }: { onDone: () => void }) {
+export default function MarsDialogue({
+  gifs = INTRO_GIFS,
+  onDone,
+}: {
+  gifs?: string[];
+  onDone: () => void;
+}) {
   const [index, setIndex] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -25,9 +31,9 @@ export default function MarsDialogue({ onDone }: { onDone: () => void }) {
   }, [index]);
 
   const advance = useCallback(() => {
-    if (index < GIFS.length - 1) setIndex((i) => i + 1);
+    if (index < gifs.length - 1) setIndex((i) => i + 1);
     else onDone();
-  }, [index, onDone]);
+  }, [index, gifs.length, onDone]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -51,7 +57,7 @@ export default function MarsDialogue({ onDone }: { onDone: () => void }) {
       >
         <img
           key={index}
-          src={GIFS[index]}
+          src={gifs[index]}
           alt=""
           style={{ width: "50%", height: "auto", objectFit: "contain", pointerEvents: "auto", cursor: "pointer" }}
         />
