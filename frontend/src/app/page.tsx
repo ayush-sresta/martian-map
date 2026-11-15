@@ -6,9 +6,7 @@ import Onboarding from "@/components/Onboarding";
 const MarsGlobe = dynamic(() => import("@/components/MarsGlobe"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-screen items-center justify-center bg-[#080b16] text-white">
-      Loading Mars explorer...
-    </div>
+    <div className="h-screen bg-[#080b16]" />
   ),
 });
 

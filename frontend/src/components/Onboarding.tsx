@@ -222,7 +222,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       )}
 
       {/* Mute */}
-      {!skipped && !fadeOut && <MuteButton style={{ position: "absolute", top: 20, right: 140, zIndex: 20, width: 34, height: 34, borderRadius: 6 }} />}
+      {!skipped && !fadeOut && <MuteButton style={{ position: "absolute", top: 20, right: 140, zIndex: 20 }} />}
 
       {/* Skip intro */}
       {!skipped && !fadeOut && (
@@ -233,8 +233,8 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             position: "absolute", top: 20, right: 20, zIndex: 20,
             background: "rgba(0,0,0,0.5)", color: "white",
             border: "1px solid rgba(255,255,255,0.6)", borderRadius: 6,
-            padding: "6px 14px", fontSize: "0.85rem",
-            fontFamily: "MainFont, Arial, sans-serif",
+            padding: "8px 18px", fontSize: "1.25rem",
+            fontFamily: "'Gaegu', cursive",
           }}
         >
           Skip intro

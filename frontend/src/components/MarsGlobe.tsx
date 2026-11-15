@@ -5,6 +5,7 @@ import { createSound } from "./sound";
 import MuteButton from "./MuteButton";
 import MarsLoader from "./MarsLoader";
 import LocationDialogue from "./LocationDialogue";
+import { ArrowIcon, MinusIcon, PlusIcon, PointerIcon, RocketIcon } from "./CrayonIcon";
 import { LOCATION_FACTS } from "./locationFacts";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -160,27 +161,19 @@ const MARS_LAYERS: MarsLayer[] = [
 ];
 
 // ==========================================
-// HELPER COMPONENTS FOR BUTTONS
+// REUSABLE CONTROL BUTTON
 // ==========================================
 
-function ButtonGroup({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex overflow-hidden rounded-lg border border-white/10 bg-[#151a2a]/90 backdrop-blur-md">
-      {children}
-    </div>
-  );
-}
-
 function ControlButton({
-  onClick,
-  disabled,
-  label,
   children,
+  onClick,
+  disabled = false,
+  label,
 }: {
+  children: ReactNode;
   onClick: () => void;
   disabled?: boolean;
   label: string;
-  children: ReactNode;
 }) {
   return (
     <button
@@ -189,7 +182,7 @@ function ControlButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex h-10 min-w-[40px] items-center justify-center px-3 text-sm text-white transition hover:bg-orange-500 disabled:opacity-40"
+      className="crayon flex h-11 min-w-11 items-center justify-center rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] px-3 text-base text-[#1c1c3a] transition hover:scale-105 active:scale-95 disabled:opacity-30"
     >
       {children}
     </button>
@@ -1102,14 +1095,14 @@ export default function MarsGlobe() {
 
       {/* Header */}
       <header className="absolute left-5 top-5 z-10">
-        <h1 style={{ fontFamily: "MainFont, sans-serif", fontSize: "1.6rem", color: "white" }}>
+        <h1 style={{ fontFamily: "'Gaegu', cursive", fontSize: "1.6rem", color: "white" }}>
           Mission: Mars
         </h1>
       </header>
 
       {/* Mute: only while a voiced dialogue is on screen */}
       {(dialogueOpen || menuDialogueOpen || factsOpen) && !onboardingSkipped && (
-        <MuteButton style={{ position: "absolute", top: 20, right: 80, zIndex: 30 }} />
+        <MuteButton style={{ position: "absolute", top: 16, right: 96, zIndex: 30 }} />
       )}
 
       {/* Hamburger button */}
@@ -1124,27 +1117,11 @@ export default function MarsGlobe() {
         }}
         aria-label={menuOpen ? "Close menu" : "Open menu"}
         aria-expanded={menuOpen}
-        className="absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#151a2a]/90 backdrop-blur-md transition hover:bg-orange-500"
+        className="crayon absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] transition hover:scale-105"
       >
-        <div className="flex w-5 flex-col gap-1.5">
-          <span
-            className={`h-0.5 w-full bg-white transition-all ${
-              menuOpen ? "translate-y-2 rotate-45" : ""
-            }`}
-          />
-
-          <span
-            className={`h-0.5 w-full bg-white transition-all ${
-              menuOpen ? "opacity-0" : ""
-            }`}
-          />
-
-          <span
-            className={`h-0.5 w-full bg-white transition-all ${
-              menuOpen ? "-translate-y-2 -rotate-45" : ""
-            }`}
-          />
-        </div>
+        <span className={`inline-block transition-transform ${menuOpen ? "rotate-180" : ""}`}>
+          <RocketIcon size={36} />
+        </span>
       </button>
 
       {/* Menu hint: points at the hamburger after the dialogue */}
@@ -1154,9 +1131,7 @@ export default function MarsGlobe() {
           className="pointer-events-none absolute right-5 top-[72px] z-30 flex w-12 flex-col items-center text-white"
           style={{ fontFamily: "MainFont, sans-serif", animation: "menuHintBounce 1s ease-in-out infinite" }}
         >
-          <svg width="28" height="36" viewBox="0 0 28 36" fill="none" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}>
-            <path d="M14 2 L26 16 H18 V34 H10 V16 H2 Z" fill="white" stroke="black" strokeWidth="2" strokeLinejoin="round" />
-          </svg>
+          <PointerIcon />
           <span className="mt-1 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}>menu</span>
         </div>
       )}
@@ -1173,14 +1148,14 @@ export default function MarsGlobe() {
 
       {/* Navigation drawer */}
       <aside
-        style={{ fontFamily: "MainFont, sans-serif" }}
-        className={`absolute right-0 top-0 z-20 flex h-full w-64 flex-col border-l border-neutral-200 bg-white text-neutral-900 transition-transform duration-300 ${
+        style={{ fontFamily: "'Nanum Pen Script', 'Segoe Print', cursive" }}
+        className={`crayon absolute right-0 top-0 z-20 flex h-full w-64 flex-col border-l-[3px] border-[#1c1c3a] bg-[#f4ead5] text-[#1c1c3a] transition-transform duration-300 ${
           menuOpen ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!menuOpen}
       >
         <div className="flex flex-1 flex-col overflow-y-auto px-5 pt-20 pb-6">
-          <h2 className="mb-3 text-xs text-neutral-400">Layers</h2>
+          <h2 className="mb-3 text-base text-[#1c1c3a]/70">Layers</h2>
           <ul className="mb-6 flex flex-col">
             {MARS_LAYERS.map((layer) => {
               const active = activeLayerId === layer.id;
@@ -1190,8 +1165,8 @@ export default function MarsGlobe() {
                     type="button"
                     onClick={() => setActiveLayerId(layer.id)}
                     disabled={loading}
-                    className={`w-full border-b border-neutral-100 py-2.5 text-left text-sm transition-colors disabled:opacity-40 ${
-                      active ? "text-black" : "text-neutral-500 hover:text-black"
+                    className={`w-full border-b-2 border-dashed border-[#1c1c3a]/40 py-2.5 text-left text-xl transition-colors disabled:opacity-40 ${
+                      active ? "font-bold text-[#1c1c3a]" : "text-[#1c1c3a]/70 hover:text-[#1c1c3a]"
                     }`}
                   >
                     {active && <span className="mr-2">•</span>}
@@ -1202,7 +1177,7 @@ export default function MarsGlobe() {
             })}
           </ul>
 
-          <h2 className="mb-3 text-xs text-neutral-400">Locations</h2>
+          <h2 className="mb-3 text-base text-[#1c1c3a]/70">Locations</h2>
           <ul className="flex flex-col">
             {MARS_LOCATIONS.map((location) => {
               const active = selectedLocation?.name === location.name;
@@ -1212,8 +1187,8 @@ export default function MarsGlobe() {
                     type="button"
                     onClick={() => flyToLocation(location)}
                     disabled={loading}
-                    className={`w-full border-b border-neutral-100 py-2.5 text-left text-sm transition-colors disabled:opacity-40 ${
-                      active ? "text-black" : "text-neutral-500 hover:text-black"
+                    className={`w-full border-b-2 border-dashed border-[#1c1c3a]/40 py-2.5 text-left text-xl transition-colors disabled:opacity-40 ${
+                      active ? "font-bold text-[#1c1c3a]" : "text-[#1c1c3a]/70 hover:text-[#1c1c3a]"
                     }`}
                   >
                     {active && <span className="mr-2">•</span>}
@@ -1233,39 +1208,37 @@ export default function MarsGlobe() {
       >
         {/* Selected location */}
         {selectedLocation && !factsOpen && (
-          <div className="max-w-xs rounded-lg border border-neutral-200 bg-white p-4">
+          <div className="crayon max-w-xs rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] p-4 text-[#1c1c3a]">
             <h2 className="text-xl">{selectedLocation.name}</h2>
-            <p className="mt-1 text-base text-neutral-500">{selectedLocation.description}</p>
-            <p className="mt-2 text-sm text-neutral-400">
+            <p className="mt-1 text-base text-[#1c1c3a]/70">{selectedLocation.description}</p>
+            <p className="mt-2 text-sm text-[#1c1c3a]/60">
               {selectedLocation.latitude.toFixed(2)}°, {selectedLocation.longitude.toFixed(2)}°
             </p>
           </div>
         )}
 
         {/* Move controls */}
-        <div className="flex gap-2">
-          <ButtonGroup>
-            <ControlButton onClick={rotateLeft} disabled={loading} label="Rotate left">←</ControlButton>
-            <ControlButton onClick={rotateUp} disabled={loading} label="Tilt up">↑</ControlButton>
-            <ControlButton onClick={rotateDown} disabled={loading} label="Tilt down">↓</ControlButton>
-            <ControlButton onClick={rotateRight} disabled={loading} label="Rotate right">→</ControlButton>
-          </ButtonGroup>
-          <ButtonGroup>
-            <ControlButton onClick={resetCamera} disabled={loading} label="Reset view">Reset</ControlButton>
-          </ButtonGroup>
-          <ButtonGroup>
-            <ControlButton onClick={zoomOut} disabled={loading} label="Zoom out">−</ControlButton>
-            <ControlButton onClick={zoomIn} disabled={loading} label="Zoom in">+</ControlButton>
-          </ButtonGroup>
-          <ButtonGroup>
+        <div className="flex flex-col items-center gap-2">
+          {/* Top row: zoom in, reset, zoom out, 2D/3D */}
+          <div className="flex items-center gap-2">
+            <ControlButton onClick={zoomIn} disabled={loading} label="Zoom in"><PlusIcon /></ControlButton>
+            <ControlButton onClick={resetCamera} disabled={loading} label="Reset view"><span className="text-xl">Reset</span></ControlButton>
+            <ControlButton onClick={zoomOut} disabled={loading} label="Zoom out"><MinusIcon /></ControlButton>
             <ControlButton
               onClick={() => setProjection((p) => (p === "3D" ? "2D" : "3D"))}
               disabled={loading}
               label={projection === "3D" ? "Switch to 2D map" : "Switch to 3D globe"}
             >
-              {projection === "3D" ? "2D" : "3D"}
+              <span className="text-xl">{projection === "3D" ? "2D" : "3D"}</span>
             </ControlButton>
-          </ButtonGroup>
+          </div>
+          {/* Bottom row: left, up, down, right */}
+          <div className="flex items-center gap-2">
+            <ControlButton onClick={rotateLeft} disabled={loading} label="Rotate left"><ArrowIcon direction="left" /></ControlButton>
+            <ControlButton onClick={rotateUp} disabled={loading} label="Tilt up"><ArrowIcon direction="up" /></ControlButton>
+            <ControlButton onClick={rotateDown} disabled={loading} label="Tilt down"><ArrowIcon direction="down" /></ControlButton>
+            <ControlButton onClick={rotateRight} disabled={loading} label="Rotate right"><ArrowIcon direction="right" /></ControlButton>
+          </div>
         </div>
       </div>
 
