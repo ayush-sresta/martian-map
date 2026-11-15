@@ -31,9 +31,9 @@ Objective: The objective of this platform is to transform Martian topograhical d
 6.Tech Stack        
 -Next.js    
 -CesiumJS   
--Python 
--Git and GIthub 
--NASA Open Data 
+-Python     
+-Git and GIthub     
+-NASA Open Data     
 -React.js   
 
 
