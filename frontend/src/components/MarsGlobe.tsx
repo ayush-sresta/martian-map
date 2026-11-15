@@ -181,6 +181,7 @@ export default function MarsGlobe() {
     let handlePointerUp: ((event: PointerEvent) => void) | undefined;
 
     let handlePointerCancel: (() => void) | undefined;
+    let cursorObserver: MutationObserver | undefined;
 
     async function initializeMars() {
       try {
@@ -254,6 +255,11 @@ export default function MarsGlobe() {
 
         inputCanvas = canvas;
 
+        // Force custom CSS cursor by blocking Cesium's inline cursor changes
+        cursorObserver = new MutationObserver(() => {
+          if (canvas.style.cursor) canvas.style.cursor = "";
+        });
+        cursorObserver.observe(canvas, { attributes: true, attributeFilter: ["style"] });
         let isDragging = false;
 
         let lastX = 0;
@@ -279,8 +285,6 @@ export default function MarsGlobe() {
 
           lastX = event.clientX;
           lastY = event.clientY;
-
-          canvas.style.cursor = "grabbing";
 
           canvas.setPointerCapture(event.pointerId);
 
@@ -389,8 +393,6 @@ export default function MarsGlobe() {
 
           isDragging = false;
 
-          canvas.style.cursor = "grab";
-
           if (canvas.hasPointerCapture(event.pointerId)) {
             canvas.releasePointerCapture(event.pointerId);
           }
@@ -402,12 +404,9 @@ export default function MarsGlobe() {
 
         handlePointerCancel = () => {
           isDragging = false;
-          canvas.style.cursor = "grab";
         };
 
         // Register mouse events.
-        canvas.style.cursor = "grab";
-
         canvas.addEventListener("pointerdown", handlePointerDown);
 
         canvas.addEventListener("pointermove", handlePointerMove);
@@ -589,6 +588,7 @@ export default function MarsGlobe() {
       cancelled = true;
 
       if (inputCanvas) {
+        cursorObserver?.disconnect();
         if (handleWheel) {
           inputCanvas.removeEventListener("wheel", handleWheel);
         }
@@ -609,7 +609,6 @@ export default function MarsGlobe() {
           inputCanvas.removeEventListener("pointercancel", handlePointerCancel);
         }
 
-        inputCanvas.style.cursor = "";
       }
 
       if (viewer && !viewer.isDestroyed()) {
@@ -745,13 +744,9 @@ export default function MarsGlobe() {
 
       {/* Header */}
       <header className="absolute left-5 top-5 z-10">
-        <h1 className="text-2xl font-bold tracking-tight">
-          MARS<span className="text-orange-500">.</span>
+        <h1 style={{ fontFamily: "MainFont, sans-serif", fontSize: "1.6rem", color: "white" }}>
+          Mission: Mars
         </h1>
-
-        <p className="text-xs tracking-widest text-gray-400">
-          INTERPLANETARY SURVIVAL GUIDE
-        </p>
       </header>
 
       {/* Hamburger button */}
@@ -908,7 +903,7 @@ export default function MarsGlobe() {
         </div>
       )}
       {/* Achievement toast */}
-      <style>{`@keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
+      <style>{`@font-face { font-family: 'MainFont'; src: url('/main.ttf'); } @keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
       {achievement && (
         <img
           src="/images/achievementinmars.png"

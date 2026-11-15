@@ -121,7 +121,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
   // auto-advance timed phases
   useEffect(() => {
-    if (phase === "dialogue" || phase === "dialogue2" || phase === "title" || phase === "fadeout") return;
+    if (phase === "dialogue" || phase === "dialogue2" || phase === "title" || phase === "fadeout" || phase === "black0" || phase === "slide1") return;
     const dur = phase.startsWith("black") ? BLACK_DURATION : SLIDE_DURATION;
     const t = setTimeout(() => {
       const next = NEXT[phase];
@@ -132,6 +132,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   }, [phase, onDone]);
 
   const handleUnlock = () => {
+    if (phase === "black0") { setPhase("slide1"); return; }
     setAudioUnlocked(true);
     setPhase("dialogue");
   };
