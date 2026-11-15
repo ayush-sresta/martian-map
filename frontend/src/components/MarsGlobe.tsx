@@ -146,6 +146,15 @@ export default function MarsGlobe() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [achievement, setAchievement] = useState(false);
+
+  // Show achievement when Mars finishes loading
+  useEffect(() => {
+    if (!loading && !error) {
+      setAchievement(true);
+      setTimeout(() => setAchievement(false), 4000);
+    }
+  }, [loading, error]);
 
   const [selectedLocation, setSelectedLocation] = useState<MarsLocation | null>(
     null,
@@ -895,6 +904,19 @@ export default function MarsGlobe() {
             {selectedLocation.longitude.toFixed(2)}° longitude
           </p>
         </div>
+      )}
+      {/* Achievement toast */}
+      <style>{`@keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
+      {achievement && (
+        <img
+          src="/images/achievementinmars.png"
+          alt="Achievement"
+          style={{
+            position: "absolute", top: 72, right: 20, zIndex: 50,
+            width: 480, height: "auto",
+            animation: "achievementIn 0.4s cubic-bezier(0.22,1,0.36,1) forwards",
+          }}
+        />
       )}
 
       {/* Loading overlay */}
