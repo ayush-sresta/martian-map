@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://your-domain.vercel.app"),
+  metadataBase: new URL("https://martian-map-sz11.vercel.app"),
 
   title: {
     default: "Mars Survival Guide | Explore and Survive on Mars",
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     title: "Mars Survival Guide",
     description:
       "Explore the Red Planet and discover what it takes to survive on Mars.",
-    url: "https://your-domain.vercel.app",
+    url: "https://martian-map-sz11.vercel.app",
     siteName: "Mars Survival Guide",
     images: ["/og-image.png"],
     type: "website",
