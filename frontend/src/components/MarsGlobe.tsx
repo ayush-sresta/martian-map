@@ -1,5 +1,6 @@
 "use client";
 
+import MarsDialogue from "./MarsDialogue";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import * as Cesium from "cesium";
@@ -147,11 +148,14 @@ export default function MarsGlobe() {
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [achievement, setAchievement] = useState(false);
+  const [dialogueOpen, setDialogueOpen] = useState(false);
+  const [menuHint, setMenuHint] = useState(false);
 
   // Show achievement when Mars finishes loading
   useEffect(() => {
     if (!loading && !error) {
       setAchievement(true);
+      setDialogueOpen(true);
       const audio = new Audio("/audio/minecraftacheivement.mp3");
       audio.play().catch(() => {});
       setTimeout(() => setAchievement(false), 4000);
@@ -752,7 +756,7 @@ export default function MarsGlobe() {
       {/* Hamburger button */}
       <button
         type="button"
-        onClick={() => setMenuOpen((open) => !open)}
+        onClick={() => { setMenuOpen((open) => !open); setMenuHint(false); }}
         aria-label={menuOpen ? "Close menu" : "Open menu"}
         aria-expanded={menuOpen}
         className="absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#151a2a]/90 backdrop-blur-md transition hover:bg-orange-500"
@@ -777,6 +781,20 @@ export default function MarsGlobe() {
           />
         </div>
       </button>
+
+      {/* Menu hint: points at the hamburger after the dialogue */}
+      {menuHint && !menuOpen && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute right-5 top-[72px] z-30 flex w-12 flex-col items-center text-white"
+          style={{ fontFamily: "MainFont, sans-serif", animation: "menuHintBounce 1s ease-in-out infinite" }}
+        >
+          <svg width="28" height="36" viewBox="0 0 28 36" fill="none" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}>
+            <path d="M14 2 L26 16 H18 V34 H10 V16 H2 Z" fill="white" stroke="black" strokeWidth="2" strokeLinejoin="round" />
+          </svg>
+          <span className="mt-1 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}>menu</span>
+        </div>
+      )}
 
       {/* Backdrop */}
       {menuOpen && (
@@ -856,7 +874,7 @@ export default function MarsGlobe() {
       </div>
 
       {/* Achievement toast */}
-      <style>{`@font-face { font-family: 'MainFont'; src: url('/main.ttf'); } @keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
+      <style>{`@font-face { font-family: 'MainFont'; src: url('/main.ttf'); } @keyframes menuHintBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } } @keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
       {achievement && (
         <img
           src="/images/achievementinmars.png"
@@ -868,6 +886,9 @@ export default function MarsGlobe() {
           }}
         />
       )}
+
+      {/* Post-load dialogue */}
+      {dialogueOpen && <MarsDialogue onDone={() => { setDialogueOpen(false); setMenuHint(true); }} />}
 
       {/* Loading overlay */}
       {loading && (
