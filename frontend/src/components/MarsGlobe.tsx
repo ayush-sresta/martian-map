@@ -5,6 +5,7 @@ import { createSound } from "./sound";
 import MuteButton from "./MuteButton";
 import MarsLoader from "./MarsLoader";
 import LocationDialogue from "./LocationDialogue";
+import { ArrowIcon, MinusIcon, PlusIcon, PointerIcon } from "./CrayonIcon";
 import { LOCATION_FACTS } from "./locationFacts";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
@@ -864,12 +865,12 @@ export default function MarsGlobe() {
         }}
         aria-label={menuOpen ? "Close menu" : "Open menu"}
         aria-expanded={menuOpen}
-        className="absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#151a2a]/90 backdrop-blur-md transition hover:bg-orange-500"
+        className="crayon absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] transition hover:scale-105"
       >
         <img
           src="/images/rocket.png"
           alt=""
-          className={`h-9 w-auto transition-transform ${menuOpen ? "rotate-180" : ""}`}
+          className={`wax h-9 w-auto transition-transform ${menuOpen ? "rotate-180" : ""}`}
         />
       </button>
 
@@ -880,9 +881,7 @@ export default function MarsGlobe() {
           className="pointer-events-none absolute right-5 top-[72px] z-30 flex w-12 flex-col items-center text-white"
           style={{ fontFamily: "MainFont, sans-serif", animation: "menuHintBounce 1s ease-in-out infinite" }}
         >
-          <svg width="28" height="36" viewBox="0 0 28 36" fill="none" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}>
-            <path d="M14 2 L26 16 H18 V34 H10 V16 H2 Z" fill="white" stroke="black" strokeWidth="2" strokeLinejoin="round" />
-          </svg>
+          <PointerIcon />
           <span className="mt-1 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}>menu</span>
         </div>
       )}
@@ -947,20 +946,20 @@ export default function MarsGlobe() {
         )}
 
         {/* Move controls */}
-        <div className="flex gap-2">
-          <ButtonGroup>
-            <ControlButton onClick={rotateLeft} disabled={loading} label="Rotate left">←</ControlButton>
-            <ControlButton onClick={rotateUp} disabled={loading} label="Tilt up">↑</ControlButton>
-            <ControlButton onClick={rotateDown} disabled={loading} label="Tilt down">↓</ControlButton>
-            <ControlButton onClick={rotateRight} disabled={loading} label="Rotate right">→</ControlButton>
-          </ButtonGroup>
-          <ButtonGroup>
-            <ControlButton onClick={resetCamera} disabled={loading} label="Reset view">Reset</ControlButton>
-          </ButtonGroup>
-          <ButtonGroup>
-            <ControlButton onClick={zoomOut} disabled={loading} label="Zoom out">−</ControlButton>
-            <ControlButton onClick={zoomIn} disabled={loading} label="Zoom in">+</ControlButton>
-          </ButtonGroup>
+        <div className="flex flex-col items-center gap-2">
+          {/* Top row: zoom in, reset, zoom out */}
+          <div className="flex items-center gap-2">
+            <ControlButton onClick={zoomIn} disabled={loading} label="Zoom in"><PlusIcon /></ControlButton>
+            <ControlButton onClick={resetCamera} disabled={loading} label="Reset view"><span className="text-xl">Reset</span></ControlButton>
+            <ControlButton onClick={zoomOut} disabled={loading} label="Zoom out"><MinusIcon /></ControlButton>
+          </div>
+          {/* Bottom row: left, up, down, right */}
+          <div className="flex items-center gap-2">
+            <ControlButton onClick={rotateLeft} disabled={loading} label="Rotate left"><ArrowIcon direction="left" /></ControlButton>
+            <ControlButton onClick={rotateUp} disabled={loading} label="Tilt up"><ArrowIcon direction="up" /></ControlButton>
+            <ControlButton onClick={rotateDown} disabled={loading} label="Tilt down"><ArrowIcon direction="down" /></ControlButton>
+            <ControlButton onClick={rotateRight} disabled={loading} label="Rotate right"><ArrowIcon direction="right" /></ControlButton>
+          </div>
         </div>
       </div>
 
@@ -1029,7 +1028,8 @@ export default function MarsGlobe() {
 
 function ButtonGroup({ children }: { children: ReactNode }) {
   return (
-    <div className="flex divide-x divide-neutral-200 overflow-hidden rounded bg-white shadow-sm">
+    // Buttons keep their own hand-drawn frames; no clipping box behind them.
+    <div className="flex gap-4">
       {children}
     </div>
   );
@@ -1053,7 +1053,7 @@ function ControlButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="flex h-8 min-w-8 items-center justify-center px-2 text-sm text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200 disabled:opacity-30"
+      className="crayon flex h-11 min-w-11 items-center justify-center rounded-md border-[3px] border-[#1c1c3a] bg-[#f4ead5] px-3 text-base text-[#1c1c3a] transition hover:scale-105 active:scale-95 disabled:opacity-30"
     >
       {children}
     </button>

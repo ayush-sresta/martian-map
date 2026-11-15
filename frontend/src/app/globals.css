@@ -40,3 +40,13 @@ html, body, *, canvas {
 a, button {
   cursor: url('/cursor/ArrowFarCursor32.png') 16 16, auto !important;
 }
+
+/* Hand-drawn crayon look for buttons (see public/crayon.svg) */
+.crayon {
+  filter: url('/crayon.svg#crayon');
+}
+/* Wax crayon texture for hand-drawn icons (see public/crayon.svg#wax) */
+.wax {
+  filter: url('/crayon.svg#wax');
+  overflow: visible;
+}
