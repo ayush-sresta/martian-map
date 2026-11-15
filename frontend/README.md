@@ -59,7 +59,7 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 4. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Acknowledgement
+## Citations:
 
-
+https://www.nasa.gov/news-release/nasa-says-mars-rover-discovered-potential-biosignature-last-year/
 

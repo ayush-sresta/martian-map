@@ -1,46 +1,82 @@
-Interplanetary Survival Guide: Martian Map  
+# Interplanetary Survival Guide: Martian Map
 
-This is an interactive geospatial platform of Martian map made by the team, LOL(Larpers of Linux), for the NASA Space Apps Challenge 2026
+An interactive geospatial platform of the Martian surface, made by team **LOL (Larpers of Linux)** for the NASA Space Apps Challenge 2026.
 
-1.Project Overview  
-Interplanetary Survival Guide: Martian Map is an interactive mars pathfinding and mapping platform designed—to help the users/astronomers—to understand and navigate on the martian surface.
-Objective: The objective of this platform is to transform Martian topograhical dataset into an accessible and interactive guide. 
+## Project Overview
 
-2.Challenge Information:    
+Interplanetary Survival Guide: Martian Map is an interactive Mars pathfinding and mapping platform that helps users and astronomers understand and navigate the Martian surface.
+
+**Objective:** Transform Martian topographical datasets into an accessible, interactive guide.
+
+## Challenge Information
+
 - **Challenge:** Challenge 11 – Martian Map
 - **Event:** NASA Space Apps Challenge 2026
-- **Team:** LOL(Larpers of Linux)
+- **Team:** LOL (Larpers of Linux)
 
-3.Problem Statement     
--Understanding Martian terrain and geographical features.   
--Planning safe routes for exploration and transportation.   
+## Problem Statement
 
-4.Project's Solution        
--Planning the safest and the shortest path. 
--Display important topographical regions of mars.   
--Visualize the martian surface in an interactive 3D mode.   
+- Understanding Martian terrain and geographical features
+- Planning safe routes for exploration and transportation
 
-5.Key Features   
--3D interactive map 
--Safe route planning    
--Short route planning   
--Interactive Navigation 
--Animated loading screen    
--Guide bot  
+## Our Solution
 
-6.Tech Stack        
--Next.js    
--CesiumJS   
--Python     
--Git and GIthub     
--NASA Open Data     
--React.js   
+- Plan the safest and the shortest path
+- Display important topographical regions of Mars
+- Visualize the Martian surface in an interactive 3D mode
 
-7.TEAM  
--Royan Rai  
--Sanskar Rai    
--Ayush Shrestha   
--Iroj Shakya    
--Aastha Khanaal   
--Prastut Karki  
+## Key Features
 
+- 3D interactive map
+- Safe route planning
+- Short route planning
+- Interactive navigation
+- Animated loading screen
+- Guide bot
+
+## Tech Stack
+
+- Next.js
+- React.js
+- CesiumJS
+- Python
+- Git and GitHub
+- NASA Open Data
+
+## Installation Guide
+
+**Prerequisites:** [Node.js](https://nodejs.org) 18.18 or later
+
+1. Clone the repository and move into it:
+
+   ```bash
+   git clone https://github.com/sanskar-rai3/martian-map
+   cd martian-map/frontend
+   ```
+
+2. Install dependencies:
+
+   ```bash
+   npm install
+   ```
+
+3. Start the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Citations
+
+- [NASA says Mars rover discovered potential biosignature last year](https://www.nasa.gov/news-release/nasa-says-mars-rover-discovered-potential-biosignature-last-year/)
+
+## Team
+
+- Royan Rai
+- Sanskar Rai
+- Ayush Shrestha
+- Iroj Shakya
+- Aastha Khanal
+- Prastut Karki
