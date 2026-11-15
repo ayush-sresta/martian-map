@@ -1,5 +1,11 @@
 "use client";
 
+import MarsDialogue from "./MarsDialogue";
+import { createSound } from "./sound";
+import MuteButton from "./MuteButton";
+import MarsLoader from "./MarsLoader";
+import LocationDialogue from "./LocationDialogue";
+import { LOCATION_FACTS } from "./locationFacts";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import * as Cesium from "cesium";
@@ -13,6 +19,9 @@ declare global {
 }
 
 const MARS_RADIUS = 3_396_190;
+
+// Closest the camera may get to the real (tiled) surface, in metres.
+const MIN_SURFACE_CLEARANCE = 200;
 
 const MARS_LOCATIONS = [
   {
@@ -142,21 +151,43 @@ function rotateVector(
 export default function MarsGlobe() {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Cesium.Viewer | null>(null);
+  // Radius of the actual terrain under the camera (Mars is far from a perfect sphere:
+  // poles ~20 km low, volcanoes 20+ km high). Updated by the surface probe.
+  const surfaceRadiusRef = useRef(MARS_RADIUS);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [achievement, setAchievement] = useState(false);
+  const [loaderDone, setLoaderDone] = useState(false);
+  const [dialogueOpen, setDialogueOpen] = useState(false);
+  const [menuDialogueOpen, setMenuDialogueOpen] = useState(false);
+  const [menuHint, setMenuHint] = useState(false);
+  const [factsOpen, setFactsOpen] = useState(false);
+  const [onboardingSkipped, setOnboardingSkipped] = useState(false);
 
-  // Show achievement when Mars finishes loading
+  // Turn off every dialogue, hint and toast for the rest of the session
+  const skipOnboarding = () => {
+    setOnboardingSkipped(true);
+    setDialogueOpen(false);
+    setMenuHint(false);
+    setMenuDialogueOpen(false);
+    setFactsOpen(false);
+    setAchievement(false);
+  };
+
+  const onboardingActive = dialogueOpen || menuHint || menuDialogueOpen;
+
+  // Show achievement once the loading screen has finished
   useEffect(() => {
-    if (!loading && !error) {
+    if (loaderDone && !error) {
       setAchievement(true);
-      const audio = new Audio("/audio/minecraftacheivement.mp3");
+      setDialogueOpen(true);
+      const audio = createSound("/audio/minecraftacheivement.mp3");
       audio.play().catch(() => {});
       setTimeout(() => setAchievement(false), 4000);
     }
-  }, [loading, error]);
+  }, [loaderDone, error]);
 
   const [selectedLocation, setSelectedLocation] = useState<MarsLocation | null>(
     null,
@@ -213,6 +244,9 @@ export default function MarsGlobe() {
           scene3DOnly: true,
           baseLayer: false,
           globe: false,
+          // Render at the screen's real pixel density (sharper on HiDPI displays)
+          useBrowserRecommendedResolution: false,
+          msaaSamples: 4,
         });
 
         viewerRef.current = viewer;
@@ -316,7 +350,7 @@ export default function MarsGlobe() {
 
           const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
 
-          const altitude = Math.max(distance - MARS_RADIUS, 1);
+          const altitude = Math.max(distance - surfaceRadiusRef.current, 1);
 
           // ------------------------------------
           // ADAPTIVE ROTATION SENSITIVITY
@@ -439,7 +473,7 @@ export default function MarsGlobe() {
 
           const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
 
-          const altitude = Math.max(distance - MARS_RADIUS, 1);
+          const altitude = Math.max(distance - surfaceRadiusRef.current, 1);
 
           const sensitivity = 0.0015;
 
@@ -454,7 +488,10 @@ export default function MarsGlobe() {
 
           if (delta < 0) {
             // Zoom IN.
-            const maxZoomIn = Math.max(0, distance - MARS_RADIUS - 100);
+            const maxZoomIn = Math.max(
+              0,
+              distance - surfaceRadiusRef.current - MIN_SURFACE_CLEARANCE,
+            );
 
             camera.zoomIn(Math.min(zoomAmount, maxZoomIn));
           } else {
@@ -478,7 +515,18 @@ export default function MarsGlobe() {
         // LOAD MARS 3D TILES
         // ======================================
 
-        const mars = await Cesium.Cesium3DTileset.fromIonAssetId(3644333);
+        // Allow more parallel tile downloads (default 6) so detail fills in faster
+        Cesium.RequestScheduler.maximumRequestsPerServer = 18;
+
+        const mars = await Cesium.Cesium3DTileset.fromIonAssetId(3644333, {
+          // Higher detail: lower error = sharper tiles (Cesium default is 16).
+          // 4 requested too many tiles at once and left visible holes.
+          maximumScreenSpaceError: 6,
+          // Show a lower-res pass first so areas never appear empty
+          progressiveResolutionHeightFraction: 0.5,
+          // Keep full detail at the edges of the view too
+          foveatedScreenSpaceError: false,
+        });
 
         if (cancelled || viewer.isDestroyed()) {
           mars.destroy();
@@ -486,6 +534,49 @@ export default function MarsGlobe() {
         }
 
         viewer.scene.primitives.add(mars);
+
+        // ======================================
+        // SURFACE COLLISION
+        // ======================================
+        // Cast a ray from the camera to Mars' centre to find the real ground
+        // below, and never let the camera go under it.
+
+        const PROBE_RANGE = 80_000; // only probe when this close to the surface
+        let probeFrame = 0;
+
+        viewer.scene.preRender.addEventListener((scene) => {
+          if (probeFrame++ % 3 !== 0) return;
+
+          const camera = scene.camera;
+          const distance = Cesium.Cartesian3.magnitude(camera.positionWC);
+
+          if (distance > MARS_RADIUS + PROBE_RANGE) {
+            surfaceRadiusRef.current = MARS_RADIUS;
+            return;
+          }
+
+          const down = Cesium.Cartesian3.negate(
+            Cesium.Cartesian3.normalize(camera.positionWC, new Cesium.Cartesian3()),
+            new Cesium.Cartesian3(),
+          );
+
+          const hit = scene.pickFromRay(new Cesium.Ray(camera.positionWC, down));
+
+          if (!hit?.position) return;
+
+          const groundRadius = Cesium.Cartesian3.magnitude(hit.position);
+          surfaceRadiusRef.current = groundRadius;
+
+          const minDistance = groundRadius + MIN_SURFACE_CLEARANCE;
+
+          if (distance < minDistance) {
+            Cesium.Cartesian3.multiplyByScalar(
+              Cesium.Cartesian3.normalize(camera.position, new Cesium.Cartesian3()),
+              minDistance,
+              camera.position,
+            );
+          }
+        });
 
         // ======================================
         // ADD MARS LOCATIONS
@@ -641,11 +732,16 @@ export default function MarsGlobe() {
 
     if (!camera || distance === null) return;
 
-    const altitude = Math.max(distance - MARS_RADIUS, 100);
+    const altitude = Math.max(distance - surfaceRadiusRef.current, 100);
 
     const zoomAmount = Math.max(Math.min(altitude * 0.2, 500_000), 25);
 
-    camera.zoomIn(zoomAmount);
+    const maxZoomIn = Math.max(
+      0,
+      distance - surfaceRadiusRef.current - MIN_SURFACE_CLEARANCE,
+    );
+
+    camera.zoomIn(Math.min(zoomAmount, maxZoomIn));
   };
 
   // ==========================================
@@ -658,7 +754,7 @@ export default function MarsGlobe() {
 
     if (!camera || distance === null) return;
 
-    const altitude = Math.max(distance - MARS_RADIUS, 100);
+    const altitude = Math.max(distance - surfaceRadiusRef.current, 100);
 
     const zoomAmount = Math.max(Math.min(altitude * 0.3, 500_000), 25);
 
@@ -706,6 +802,7 @@ export default function MarsGlobe() {
     });
 
     setSelectedLocation(null);
+    setFactsOpen(false);
   };
 
   // ==========================================
@@ -718,6 +815,7 @@ export default function MarsGlobe() {
     if (!viewer) return;
 
     setSelectedLocation(location);
+    setFactsOpen(!onboardingSkipped);
 
     viewer.camera.flyTo({
       destination: Cesium.Cartesian3.fromDegrees(
@@ -749,10 +847,21 @@ export default function MarsGlobe() {
         </h1>
       </header>
 
+      {/* Mute: only while a voiced dialogue is on screen */}
+      {(dialogueOpen || menuDialogueOpen || factsOpen) && !onboardingSkipped && (
+        <MuteButton style={{ position: "absolute", top: 20, right: 80, zIndex: 30 }} />
+      )}
+
       {/* Hamburger button */}
       <button
         type="button"
-        onClick={() => setMenuOpen((open) => !open)}
+        onClick={() => {
+          setMenuOpen((open) => !open);
+          if (menuHint) {
+            setMenuHint(false);
+            setMenuDialogueOpen(true);
+          }
+        }}
         aria-label={menuOpen ? "Close menu" : "Open menu"}
         aria-expanded={menuOpen}
         className="absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#151a2a]/90 backdrop-blur-md transition hover:bg-orange-500"
@@ -778,6 +887,20 @@ export default function MarsGlobe() {
         </div>
       </button>
 
+      {/* Menu hint: points at the hamburger after the dialogue */}
+      {menuHint && !menuOpen && (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute right-5 top-[72px] z-30 flex w-12 flex-col items-center text-white"
+          style={{ fontFamily: "MainFont, sans-serif", animation: "menuHintBounce 1s ease-in-out infinite" }}
+        >
+          <svg width="28" height="36" viewBox="0 0 28 36" fill="none" style={{ filter: "drop-shadow(0 2px 4px rgba(0,0,0,0.6))" }}>
+            <path d="M14 2 L26 16 H18 V34 H10 V16 H2 Z" fill="white" stroke="black" strokeWidth="2" strokeLinejoin="round" />
+          </svg>
+          <span className="mt-1 text-sm" style={{ textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}>menu</span>
+        </div>
+      )}
+
       {/* Backdrop */}
       {menuOpen && (
         <button
@@ -790,120 +913,73 @@ export default function MarsGlobe() {
 
       {/* Navigation drawer */}
       <aside
-        className={`absolute right-0 top-0 z-20 h-full w-[320px] max-w-[85vw] border-l border-white/10 bg-[#101525]/95 p-6 pt-24 shadow-2xl backdrop-blur-xl transition-transform duration-300 ${
+        style={{ fontFamily: "MainFont, sans-serif" }}
+        className={`absolute right-0 top-0 z-20 flex h-full w-64 flex-col border-l border-neutral-200 bg-white text-neutral-900 transition-transform duration-300 ${
           menuOpen ? "translate-x-0" : "translate-x-full"
         }`}
         aria-hidden={!menuOpen}
       >
-        <div className="flex h-full flex-col gap-8 overflow-y-auto">
-          {/* Camera controls */}
-          <section>
-            <h2 className="mb-4 text-xs font-semibold tracking-[0.2em] text-gray-400">
-              CAMERA CONTROLS
-            </h2>
-
-            <div className="grid grid-cols-3 gap-2">
-              <div />
-
-              <ControlButton onClick={rotateUp} disabled={loading}>
-                ↑
-              </ControlButton>
-
-              <div />
-
-              <ControlButton onClick={rotateLeft} disabled={loading}>
-                ←
-              </ControlButton>
-
-              <ControlButton onClick={resetCamera} disabled={loading}>
-                ⌂
-              </ControlButton>
-
-              <ControlButton onClick={rotateRight} disabled={loading}>
-                →
-              </ControlButton>
-
-              <div />
-
-              <ControlButton onClick={rotateDown} disabled={loading}>
-                ↓
-              </ControlButton>
-
-              <div />
-            </div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <ControlButton onClick={zoomIn} disabled={loading}>
-                + Zoom in
-              </ControlButton>
-
-              <ControlButton onClick={zoomOut} disabled={loading}>
-                − Zoom out
-              </ControlButton>
-            </div>
-          </section>
-
-          {/* Mars locations */}
-          <section>
-            <h2 className="mb-4 text-xs font-semibold tracking-[0.2em] text-gray-400">
-              EXPLORE MARS
-            </h2>
-
-            <div className="space-y-2">
-              {MARS_LOCATIONS.map((location) => (
-                <button
-                  key={location.name}
-                  type="button"
-                  onClick={() => flyToLocation(location)}
-                  disabled={loading}
-                  className={`w-full rounded-xl border p-3 text-left transition ${
-                    selectedLocation?.name === location.name
-                      ? "border-orange-500 bg-orange-500/10"
-                      : "border-white/10 bg-white/5 hover:border-orange-500/50 hover:bg-white/10"
-                  } disabled:cursor-not-allowed disabled:opacity-50`}
-                >
-                  <div className="font-medium">{location.name}</div>
-
-                  <p className="mt-1 text-xs text-gray-400">
-                    {location.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </section>
-
-          {/* Footer */}
-          <div className="mt-auto border-t border-white/10 pt-4">
-            <p className="text-xs text-gray-500">MARS EXPLORATION SYSTEM</p>
-
-            <p className="mt-1 text-xs text-gray-600">
-              Navigate the Martian surface.
-            </p>
-          </div>
+        <div className="flex flex-1 flex-col overflow-y-auto px-5 pt-20 pb-6">
+          <h2 className="mb-3 text-xs text-neutral-400">Locations</h2>
+          <ul className="flex flex-col">
+            {MARS_LOCATIONS.map((location) => {
+              const active = selectedLocation?.name === location.name;
+              return (
+                <li key={location.name}>
+                  <button
+                    type="button"
+                    onClick={() => flyToLocation(location)}
+                    disabled={loading}
+                    className={`w-full border-b border-neutral-100 py-2.5 text-left text-sm transition-colors disabled:opacity-40 ${
+                      active ? "text-black" : "text-neutral-500 hover:text-black"
+                    }`}
+                  >
+                    {active && <span className="mr-2">•</span>}
+                    {location.name}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       </aside>
 
-      {/* Selected location */}
-      {selectedLocation && (
-        <div className="absolute bottom-6 left-5 z-10 max-w-xs rounded-xl border border-white/10 bg-[#101525]/90 p-4 backdrop-blur-md">
-          <p className="text-xs font-semibold tracking-widest text-orange-400">
-            SELECTED LOCATION
-          </p>
+      {/* Bottom-left: selected location + move controls */}
+      <div
+        style={{ fontFamily: "MainFont, sans-serif" }}
+        className="absolute bottom-6 left-5 z-10 flex flex-col items-start gap-2 text-neutral-900"
+      >
+        {/* Selected location */}
+        {selectedLocation && !factsOpen && (
+          <div className="max-w-xs rounded-lg border border-neutral-200 bg-white p-4">
+            <h2 className="text-xl">{selectedLocation.name}</h2>
+            <p className="mt-1 text-base text-neutral-500">{selectedLocation.description}</p>
+            <p className="mt-2 text-sm text-neutral-400">
+              {selectedLocation.latitude.toFixed(2)}°, {selectedLocation.longitude.toFixed(2)}°
+            </p>
+          </div>
+        )}
 
-          <h2 className="mt-2 text-lg font-bold">{selectedLocation.name}</h2>
-
-          <p className="mt-1 text-sm text-gray-400">
-            {selectedLocation.description}
-          </p>
-
-          <p className="mt-3 text-xs text-gray-500">
-            {selectedLocation.latitude.toFixed(2)}° latitude,{" "}
-            {selectedLocation.longitude.toFixed(2)}° longitude
-          </p>
+        {/* Move controls */}
+        <div className="flex gap-2">
+          <ButtonGroup>
+            <ControlButton onClick={rotateLeft} disabled={loading} label="Rotate left">←</ControlButton>
+            <ControlButton onClick={rotateUp} disabled={loading} label="Tilt up">↑</ControlButton>
+            <ControlButton onClick={rotateDown} disabled={loading} label="Tilt down">↓</ControlButton>
+            <ControlButton onClick={rotateRight} disabled={loading} label="Rotate right">→</ControlButton>
+          </ButtonGroup>
+          <ButtonGroup>
+            <ControlButton onClick={resetCamera} disabled={loading} label="Reset view">Reset</ControlButton>
+          </ButtonGroup>
+          <ButtonGroup>
+            <ControlButton onClick={zoomOut} disabled={loading} label="Zoom out">−</ControlButton>
+            <ControlButton onClick={zoomIn} disabled={loading} label="Zoom in">+</ControlButton>
+          </ButtonGroup>
         </div>
-      )}
+      </div>
+
       {/* Achievement toast */}
-      <style>{`@font-face { font-family: 'MainFont'; src: url('/main.ttf'); } @keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
+      <style>{`@font-face { font-family: 'MainFont'; src: url('/main.ttf'); } @keyframes menuHintBounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-8px); } } @keyframes achievementIn { from { transform: translateX(120%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }`}</style>
       {achievement && (
         <img
           src="/images/achievementinmars.png"
@@ -916,18 +992,38 @@ export default function MarsGlobe() {
         />
       )}
 
-      {/* Loading overlay */}
-      {loading && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-[#080b16]">
-          <div className="text-center">
-            <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-2 border-gray-700 border-t-orange-500" />
+      {/* Post-load dialogue */}
+      {dialogueOpen && <MarsDialogue onDone={() => { setDialogueOpen(false); setMenuHint(true); }} />}
 
-            <p className="text-sm tracking-widest text-gray-300">
-              INITIALIZING MARS...
-            </p>
-          </div>
-        </div>
+      {/* Dialogue after the menu is first opened from the hint */}
+      {menuDialogueOpen && (
+        <MarsDialogue gifs={["/dialogues/mars/6.gif"]} onDone={() => setMenuDialogueOpen(false)} />
       )}
+
+      {/* Location facts, Ren'Py style */}
+      {factsOpen && !onboardingSkipped && selectedLocation && !dialogueOpen && !menuDialogueOpen && (
+        <LocationDialogue
+          key={selectedLocation.name}
+          title={selectedLocation.name}
+          lines={LOCATION_FACTS[selectedLocation.name] ?? [selectedLocation.description]}
+          onDone={() => setFactsOpen(false)}
+        />
+      )}
+
+      {/* Skip onboarding */}
+      {onboardingActive && !onboardingSkipped && (
+        <button
+          type="button"
+          onClick={skipOnboarding}
+          style={{ fontFamily: "MainFont, sans-serif" }}
+          className="absolute left-1/2 top-5 z-40 -translate-x-1/2 rounded-md border border-white/60 bg-black/50 px-4 py-1.5 text-sm text-white hover:bg-black/70"
+        >
+          Skip onboarding
+        </button>
+      )}
+
+      {/* Loading overlay */}
+      {!loaderDone && <MarsLoader ready={!loading} onFinish={() => setLoaderDone(true)} />}
 
       {/* Error overlay */}
       {error && !loading && (
@@ -945,21 +1041,33 @@ export default function MarsGlobe() {
 // REUSABLE CONTROL BUTTON
 // ==========================================
 
+function ButtonGroup({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex divide-x divide-neutral-200 overflow-hidden rounded bg-white shadow-sm">
+      {children}
+    </div>
+  );
+}
+
 function ControlButton({
   children,
   onClick,
   disabled = false,
+  label,
 }: {
   children: ReactNode;
   onClick: () => void;
   disabled?: boolean;
+  label: string;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex min-h-10 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-sm transition hover:border-orange-500 hover:bg-orange-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+      aria-label={label}
+      title={label}
+      className="flex h-8 min-w-8 items-center justify-center px-2 text-sm text-neutral-700 hover:bg-neutral-100 active:bg-neutral-200 disabled:opacity-30"
     >
       {children}
     </button>
