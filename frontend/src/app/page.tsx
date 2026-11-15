@@ -1,6 +1,7 @@
 "use client";
-
 import dynamic from "next/dynamic";
+import { useState } from "react";
+import Onboarding from "@/components/Onboarding";
 
 const MarsGlobe = dynamic(() => import("@/components/MarsGlobe"), {
   ssr: false,
@@ -12,5 +13,11 @@ const MarsGlobe = dynamic(() => import("@/components/MarsGlobe"), {
 });
 
 export default function Home() {
-  return <MarsGlobe />;
+  const [done, setDone] = useState(false);
+  return (
+    <>
+      {!done && <Onboarding onDone={() => setDone(true)} />}
+      {done && <MarsGlobe />}
+    </>
+  );
 }
