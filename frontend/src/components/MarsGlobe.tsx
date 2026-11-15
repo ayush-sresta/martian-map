@@ -866,25 +866,11 @@ export default function MarsGlobe() {
         aria-expanded={menuOpen}
         className="absolute right-5 top-5 z-30 flex h-12 w-12 items-center justify-center rounded-xl border border-white/10 bg-[#151a2a]/90 backdrop-blur-md transition hover:bg-orange-500"
       >
-        <div className="flex w-5 flex-col gap-1.5">
-          <span
-            className={`h-0.5 w-full bg-white transition-all ${
-              menuOpen ? "translate-y-2 rotate-45" : ""
-            }`}
-          />
-
-          <span
-            className={`h-0.5 w-full bg-white transition-all ${
-              menuOpen ? "opacity-0" : ""
-            }`}
-          />
-
-          <span
-            className={`h-0.5 w-full bg-white transition-all ${
-              menuOpen ? "-translate-y-2 -rotate-45" : ""
-            }`}
-          />
-        </div>
+        <img
+          src="/images/rocket.png"
+          alt=""
+          className={`h-9 w-auto transition-transform ${menuOpen ? "rotate-180" : ""}`}
+        />
       </button>
 
       {/* Menu hint: points at the hamburger after the dialogue */}
