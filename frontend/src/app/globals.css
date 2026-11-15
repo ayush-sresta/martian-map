@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+.cesium-widget-credits {
+  display: none !important;
+}
+
 @font-face {
   font-family: "MainFont";
   src: url("/main.ttf") format("truetype");
