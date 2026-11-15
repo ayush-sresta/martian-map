@@ -7,6 +7,13 @@ import MarsLoader from "./MarsLoader";
 import LocationDialogue from "./LocationDialogue";
 import { ArrowIcon, MinusIcon, PlusIcon, PointerIcon, RocketIcon } from "./CrayonIcon";
 import { LOCATION_FACTS } from "./locationFacts";
+import {
+  fetchMarsRoute,
+  drawMarsPath,
+  clearMarsPath,
+  type PathResult,
+  type RouteStop,
+} from "./marsPath";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import * as Cesium from "cesium";
@@ -238,6 +245,13 @@ export default function MarsGlobe() {
   const [onboardingSkipped, setOnboardingSkipped] = useState(false);
   const [projection, setProjection] = useState<"3D" | "2D">("3D");
   const [activeLayerId, setActiveLayerId] = useState("surface");
+
+  // Route planning (2 or more places -> pathfinding API)
+  const [routeStops, setRouteStops] = useState<RouteStop[]>([]);
+  const [routeLoading, setRouteLoading] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
+  const [routeResult, setRouteResult] = useState<PathResult | null>(null);
+  const [customInput, setCustomInput] = useState("");
 
   // Turn off every dialogue, hint and toast for the rest of the session
   const skipOnboarding = () => {
@@ -1085,6 +1099,69 @@ export default function MarsGlobe() {
   };
 
   // ==========================================
+  // ROUTE PLANNING
+  // ==========================================
+
+  const addStop = (stop: RouteStop) => {
+    setRouteStops((stops) => [...stops, stop]);
+    setRouteError(null);
+  };
+
+  const removeStop = (index: number) => {
+    setRouteStops((stops) => stops.filter((_, i) => i !== index));
+  };
+
+  // Accepts "lat, lon", e.g. "18.38, 77.58"
+  const addCustomStop = () => {
+    const [lat, lon] = customInput.split(",").map((value) => parseFloat(value.trim()));
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90) {
+      setRouteError('Enter coordinates like "18.38, 77.58"');
+      return;
+    }
+
+    addStop({
+      name: `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`,
+      latitude: lat,
+      longitude: lon,
+    });
+    setCustomInput("");
+  };
+
+  const clearRoute = () => {
+    const viewer = viewerRef.current;
+
+    if (viewer && !viewer.isDestroyed()) clearMarsPath(viewer);
+
+    setRouteStops([]);
+    setRouteResult(null);
+    setRouteError(null);
+  };
+
+  const findRoute = async () => {
+    const viewer = viewerRef.current;
+
+    if (!viewer || viewer.isDestroyed() || routeStops.length < 2) return;
+
+    setRouteLoading(true);
+    setRouteError(null);
+
+    try {
+      const result = await fetchMarsRoute(routeStops);
+
+      if (viewer.isDestroyed()) return;
+
+      drawMarsPath(viewer, result);
+      setRouteResult(result);
+      setMenuOpen(false);
+    } catch (err) {
+      setRouteError(err instanceof Error ? err.message : "Could not find a path.");
+    } finally {
+      setRouteLoading(false);
+    }
+  };
+
+  // ==========================================
   // USER INTERFACE
   // ==========================================
 
@@ -1177,22 +1254,125 @@ export default function MarsGlobe() {
             })}
           </ul>
 
+          <h2 className="mb-3 text-base text-[#1c1c3a]/70">Route</h2>
+          <div className="mb-6">
+            {routeStops.length === 0 && (
+              <p className="mb-2 text-lg text-[#1c1c3a]/60">
+                Add 2 or more places with the + buttons below.
+              </p>
+            )}
+
+            <ol className="mb-2 flex flex-col">
+              {routeStops.map((stop, i) => (
+                <li
+                  key={`${stop.name}-${i}`}
+                  className="flex items-center justify-between border-b-2 border-dashed border-[#1c1c3a]/40 py-1.5 text-xl"
+                >
+                  <span>
+                    {i + 1}. {stop.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => removeStop(i)}
+                    aria-label={`Remove ${stop.name}`}
+                    className="px-2 text-[#1c1c3a]/70 hover:text-[#1c1c3a]"
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ol>
+
+            <div className="mb-2 flex gap-1">
+              <input
+                value={customInput}
+                onChange={(e) => setCustomInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addCustomStop()}
+                placeholder="lat, lon"
+                className="min-w-0 flex-1 rounded-md border-2 border-[#1c1c3a]/60 bg-transparent px-2 py-1 text-lg"
+              />
+              <button
+                type="button"
+                onClick={addCustomStop}
+                className="rounded-md border-2 border-[#1c1c3a] px-2 text-lg"
+              >
+                Add
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={findRoute}
+                disabled={loading || routeLoading || routeStops.length < 2}
+                className="flex-1 rounded-md border-[3px] border-[#1c1c3a] py-1 text-xl disabled:opacity-30"
+              >
+                {routeLoading ? "Finding…" : "Find path"}
+              </button>
+              {(routeStops.length > 0 || routeResult) && (
+                <button
+                  type="button"
+                  onClick={clearRoute}
+                  className="rounded-md border-[3px] border-[#1c1c3a] px-3 py-1 text-xl"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            {routeError && <p className="mt-2 text-base text-red-700">{routeError}</p>}
+
+            {routeResult && (
+              <div className="mt-3 text-lg text-[#1c1c3a]/80">
+                <p>
+                  {routeResult.summary.distanceKm.toFixed(1)} km · {routeResult.summary.walkingTime.formatted}
+                </p>
+                <p>
+                  {routeResult.summary.evaSols.toFixed(1)} sols of EVA · max slope{" "}
+                  {routeResult.summary.maxSlopeDeg.toFixed(1)}°
+                </p>
+                <p>
+                  ↑{Math.round(routeResult.summary.ascentM)} m ↓{Math.round(routeResult.summary.descentM)} m
+                </p>
+              </div>
+            )}
+          </div>
+
           <h2 className="mb-3 text-base text-[#1c1c3a]/70">Locations</h2>
           <ul className="flex flex-col">
             {MARS_LOCATIONS.map((location) => {
               const active = selectedLocation?.name === location.name;
               return (
-                <li key={location.name}>
+                <li
+                  key={location.name}
+                  className="flex items-center border-b-2 border-dashed border-[#1c1c3a]/40"
+                >
                   <button
                     type="button"
                     onClick={() => flyToLocation(location)}
                     disabled={loading}
-                    className={`w-full border-b-2 border-dashed border-[#1c1c3a]/40 py-2.5 text-left text-xl transition-colors disabled:opacity-40 ${
+                    className={`flex-1 py-2.5 text-left text-xl transition-colors disabled:opacity-40 ${
                       active ? "font-bold text-[#1c1c3a]" : "text-[#1c1c3a]/70 hover:text-[#1c1c3a]"
                     }`}
                   >
                     {active && <span className="mr-2">•</span>}
                     {location.name}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      addStop({
+                        name: location.name,
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                      })
+                    }
+                    disabled={loading}
+                    aria-label={`Add ${location.name} to route`}
+                    title="Add to route"
+                    className="px-2 text-2xl text-[#1c1c3a]/70 hover:text-[#1c1c3a] disabled:opacity-40"
+                  >
+                    +
                   </button>
                 </li>
               );
