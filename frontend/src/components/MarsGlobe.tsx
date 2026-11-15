@@ -152,6 +152,8 @@ export default function MarsGlobe() {
   useEffect(() => {
     if (!loading && !error) {
       setAchievement(true);
+      const audio = new Audio("/audio/minecraftacheivement.mp3");
+      audio.play().catch(() => {});
       setTimeout(() => setAchievement(false), 4000);
     }
   }, [loading, error]);
@@ -912,8 +914,8 @@ export default function MarsGlobe() {
           src="/images/achievementinmars.png"
           alt="Achievement"
           style={{
-            position: "absolute", top: 72, right: 20, zIndex: 50,
-            width: 480, height: "auto",
+            position: "absolute", top: 1, right: 72, zIndex: 50,
+            width: 600, height: "auto",
             animation: "achievementIn 0.4s cubic-bezier(0.22,1,0.36,1) forwards",
           }}
         />

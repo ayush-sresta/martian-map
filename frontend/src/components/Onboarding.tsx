@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 const SLIDE_DURATION = 1800;
 const BLACK_DURATION = 600;
 const WORD = "marstronaut";
-const TYPE_SPEED = 30;
 
 const DIALOGUE: { gif: string }[] = [
   { gif: "/dialogues/1.gif"  },
@@ -45,9 +44,45 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
   const [letters, setLetters] = useState(0);
   const [fadeOut, setFadeOut] = useState(false);
   const [lineIndex, setLineIndex] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playCountRef = useRef(0);
 
+  const isDialogue = phase === "dialogue" || phase === "dialogue2";
   const currentDialogue = phase === "dialogue2" ? DIALOGUE2 : DIALOGUE;
+
+  // Play audio on every gif once unlocked
+  useEffect(() => {
+    if (!isDialogue || !audioUnlocked) return;
+    if (!audioRef.current) {
+      audioRef.current = new Audio("/audio/astronaut.mp3");
+    }
+    const audio = audioRef.current;
+    const longGifs = phase === "dialogue" && [2, 3, 4].includes(lineIndex);
+    console.log("GIF audio:", phase, lineIndex, "longGif:", longGifs);
+    let active = true;
+    let played = 0;
+
+    audio.currentTime = 0;
+    audio.play().catch(() => {});
+
+    const onEnded = () => {
+      if (!active) return;
+      played++;
+      if (longGifs && played < 2) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      } else {
+        audio.removeEventListener("ended", onEnded);
+      }
+    };
+    audio.addEventListener("ended", onEnded);
+
+    return () => {
+      active = false;
+      audio.removeEventListener("ended", onEnded);
+    };
+  }, [lineIndex, isDialogue, audioUnlocked]);
 
   const advance = useCallback(() => {
     if (phase !== "dialogue" && phase !== "dialogue2") return;
@@ -73,7 +108,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     return () => window.removeEventListener("keydown", handler);
   }, [advance]);
 
-  // title typewriter
+  // title typewriter — auto advance when done
   useEffect(() => {
     if (phase !== "title") return;
     if (letters < WORD.length) {
@@ -96,6 +131,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     return () => clearTimeout(t);
   }, [phase, onDone]);
 
+  const handleUnlock = () => {
+    setAudioUnlocked(true);
+    setPhase("dialogue");
+  };
+
   const slideFor: Record<string, string> = {
     slide1: "/images/1.png",
     slide2: "/images/2.png",
@@ -103,7 +143,6 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
     slide4: "/images/4.png",
   };
 
-  const isDialogue = phase === "dialogue" || phase === "dialogue2";
   const bgImage = phase === "dialogue2" ? "/images/2.png" : "/images/1.png";
 
   return (
@@ -115,6 +154,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
       <style>{`
         @font-face { font-family: "MainFont"; src: url("/main.ttf") format("truetype"); }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
       `}</style>
 
       {/* Title */}
@@ -142,6 +182,21 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         />
       )}
 
+      {/* Click anywhere to continue — shown on slide1 before dialogue */}
+      {(phase === "black0" || phase === "slide1") && (
+        <div onClick={handleUnlock} style={{
+          position: "absolute", inset: 0, zIndex: 10, cursor: "pointer",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+          paddingBottom: "4%",
+        }}>
+          <p style={{
+            color: "rgba(255,255,255,0.7)", fontSize: "0.8rem",
+            letterSpacing: "0.2em", fontFamily: "Arial, sans-serif",
+            animation: "blink 1.2s ease-in-out infinite",
+          }}>CLICK ANYWHERE TO CONTINUE</p>
+        </div>
+      )}
+
       {/* Dialogue phases */}
       {isDialogue && (
         <div style={{ position: "absolute", inset: 0 }}>
@@ -149,7 +204,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
           />
           <div onClick={advance} style={{
-            position: "absolute", top: "50%", left: 0, right: 0,
+            position: "absolute", top: "70%", left: 0, right: 0,
             display: "flex", justifyContent: "center",
             cursor: "pointer", zIndex: 2,
           }}>
